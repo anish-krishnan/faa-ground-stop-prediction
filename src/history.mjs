@@ -14,9 +14,20 @@ export function snapshotAt(archive, frame) {
 }
 
 export function historyModels(archive) {
-  return archive.frames.map(frame => ({
-    at: frame.at, model: analyze(snapshotAt(archive, frame), frame.at),
-  }));
+  return archive.frames.map(frame => {
+    const reaction = frame.at >= archive.reference.at;
+    // Retrospective reaction estimates may put the event in the past. Anchor only
+    // at a NO cutoff whose settlement was already public at this observation.
+    // The eventual YES outcome and actual reopening time do not set the CDF value.
+    const knownNo = (archive.noSettlements || [])
+      .filter(s => s.knownAt <= frame.at && s.t <= frame.at && Number.isFinite(s.t))
+      .reduce((latest, s) => Math.max(latest, s.t), -Infinity);
+    const anchor = reaction ? knownNo : frame.at;
+    const model = Number.isFinite(anchor)
+      ? analyze(snapshotAt(archive, frame), anchor)
+      : { rows: [], points: [], error: 'No previously settled NO cutoff for a retrospective estimate.' };
+    return { at: frame.at, reaction, anchor, model };
+  });
 }
 
 function closePrice(side) {

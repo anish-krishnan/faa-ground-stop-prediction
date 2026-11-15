@@ -36,23 +36,37 @@ test('overlapping pagination deduplicates identical candles and rejects conflict
   const altered = structuredClone(page); altered.market_candlesticks[0][0].yes_bid.close_dollars='.9';
   assert.throws(()=>buildFrames(markets,[page,altered],{start,endExclusive:start+60000}), /Conflicting/);
 });
-test('archive is ordered, pre-reopening, and retains unbounded percentiles', async () => {
+test('archive preserves forecasts and separates the subsequent reaction', async () => {
   const archive = JSON.parse(await readFile(new URL('../data/history.json',import.meta.url)));
   const history = historyModels(archive);
-  assert.equal(history.length,205);
-  assert.equal(history.filter(p=>!p.model.error).length,197);
+  assert.equal(history.length,216);
+  assert.equal(history.filter(p=>!p.model.error).length,208);
   for (let i=0;i<history.length;i++) {
-    assert.ok(history[i].at < archive.reference.at);
+    assert.ok(history[i].at < archive.endExclusive);
     if(i) assert.equal(history[i].at-history[i-1].at,60000);
     assert.ok(!history[i].model.settled);
-    if(!history[i].model.error) assert.ok(history[i].model.median.time >= history[i].at);
+    if(!history[i].model.error && !history[i].reaction) assert.ok(history[i].model.median.time >= history[i].at);
   }
   const first = history.find(p=>!p.model.error);
   assert.equal(quantile(first.model.points,.9).edge,'after');
-  assert.ok(first.model.median.time < history.at(-1).model.median.time);
+  const lastForecast = history.findLast(p => !p.reaction);
+  assert.ok(first.model.median.time < lastForecast.model.median.time);
   // Independent check from the audited 49% / 54.5% closing midpoints.
   const expected = Date.parse('2026-11-14T09:30:00Z') + (0.50-0.49)/(0.545-0.49)*1800000;
-  assert.ok(Math.abs(history.at(-1).model.median.time-expected) < 1);
+  assert.ok(Math.abs(lastForecast.model.median.time-expected) < 1);
+  assert.equal(history.at(-1).anchor, Date.parse('2026-11-14T01:00:00Z'));
+  assert.ok(history.at(-1).model.median.time < history.at(-1).at);
+  assert.ok(history.at(-1).model.median.time > history.at(-1).anchor);
   assert.equal(archive.settlement.earliest, Date.parse('2026-11-14T01:00:00Z'));
   assert.equal(archive.settlement.latest, Date.parse('2026-11-14T01:30:00Z'));
+});
+
+test('reaction uses only already-published NO settlements and never pins the estimate to truth', () => {
+  const archive = { markets, reference:{at:start}, frames:[{at:start,quotes:[[0,.9,.95],[1,.95,.98]]}],
+    noSettlements:[{t:start-7200000,knownAt:start-60000},{t:start-60000,knownAt:start+60000}] };
+  const result = historyModels(archive)[0];
+  assert.equal(result.anchor,start-7200000);
+  assert.ok(result.model.median.time < start);
+  assert.deepEqual(historyModels({...archive,reference:{at:start-300000}})[0].model,result.model);
+  assert.ok(historyModels({...archive,noSettlements:[archive.noSettlements[1]]})[0].model.error);
 });

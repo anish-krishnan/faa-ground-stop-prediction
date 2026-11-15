@@ -17,7 +17,7 @@ function format(time, options = {}) {
   if (time == null) return '—';
   return new Intl.DateTimeFormat('en-US', {
     timeZone: $('timezone').value, hour: 'numeric', minute: '2-digit', ...options,
-  }).format(new Date(time));
+  }).format(new Date(Math.round(time / 60_000) * 60_000));
 }
 const date = time => format(time, { month: 'short', day: 'numeric', timeZoneName: 'short' });
 function percentileLabel(result) {
@@ -139,7 +139,7 @@ function renderArchiveHero() {
 
 function render(redrawHistory = true) {
   if (!state.snapshot) return;
-  const model = analyze(state.snapshot, Date.parse(state.snapshot.fetchedAt));
+  const model = archive ? history[selected].model : analyze(state.snapshot, Date.parse(state.snapshot.fetchedAt));
   state.model = model;
   if (archive) {
     $('historySection').hidden = false;
@@ -148,7 +148,7 @@ function render(redrawHistory = true) {
     $('referenceLink').textContent = `Airspace reopened · ${date(archive.reference.at)} ↗`;
     $('referenceLink').href = archive.reference.url;
     $('historyRangeLegend').textContent = `${Number($('coverage').value)*100}% range`;
-    $('historyBoundary').textContent = `Forecasts through ${format(archive.frames.at(-1).at)} · pre-reopening only`;
+    $('historyBoundary').textContent = `Market reaction shown through ${format(archive.frames.at(-1).at)}`;
     if (redrawHistory) drawHistory($('historyChart'), $('historyDetails'), history, archive, selected, Number($('coverage').value), format, index => selectHistory(index, false));
   }
   const notices = [];

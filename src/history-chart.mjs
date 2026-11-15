@@ -5,7 +5,7 @@ export function drawHistory(container, details, history, archive, selected, cove
   const width = Math.max(280, container.clientWidth), height = 320;
   const left = width < 550 ? 73 : 100, right = 18, top = 22, bottom = 46;
   const points = history.map(p => p.model.error ? { at: p.at } : {
-    at: p.at, median: p.model.median,
+    at: p.at, reaction: p.reaction, median: p.model.median,
     low: quantile(p.model.points, (1 - coverage) / 2),
     high: quantile(p.model.points, (1 + coverage) / 2),
   });
@@ -26,6 +26,9 @@ export function drawHistory(container, details, history, archive, selected, cove
     return result;
   };
   const svg = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Historical median announcement estimates and middle ${coverage * 100} percent range. Horizontal axis is forecast observation time; vertical axis is predicted announcement time.">`];
+  const reactionX = x(archive.reference.at);
+  svg.push(`<rect x="${reactionX}" y="${top}" width="${Math.max(0,width-right-reactionX)}" height="${height-top-bottom}" fill="#edf1ed"/>`);
+  svg.push(`<line x1="${reactionX}" x2="${reactionX}" y1="${top}" y2="${height-bottom}" stroke="#93a799" stroke-dasharray="3 4"/>`);
   for (let i = 0; i < 5; i++) {
     const t = min + (max - min) * i / 4;
     svg.push(`<line x1="${left}" x2="${width - right}" y1="${y(t)}" y2="${y(t)}" stroke="#e1e7df"/>`);
@@ -39,8 +42,11 @@ export function drawHistory(container, details, history, archive, selected, cove
   svg.push(`<line x1="${left}" x2="${width-right}" y1="${actualY}" y2="${actualY}" stroke="#50695c" stroke-dasharray="5 4"/>`);
   svg.push(`<circle cx="${x(archive.reference.at)}" cy="${actualY}" r="5.5" fill="#2f855c" stroke="#f8f9f5" stroke-width="2"/>`);
   svg.push(`<text x="${x(archive.reference.at)-10}" y="${actualY-10}" text-anchor="end" fill="#2f855c" font-size="10" font-weight="600">Lifted ${escape(format(archive.reference.at))}</text>`);
-  for (const run of runs(p => p.median && !p.median.edge)) {
+  for (const run of runs(p => p.median && !p.median.edge && !p.reaction)) {
     svg.push(`<path d="${path(run, 'median')}" fill="none" stroke="#de773e" stroke-width="2.5" stroke-linejoin="round"/>`);
+  }
+  for (const run of runs(p => p.median && !p.median.edge && p.reaction)) {
+    svg.push(`<path d="${path(run, 'median')}" fill="none" stroke="#de773e" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="4 3"/>`);
   }
   // A triangle denotes a lower bound, never a finite median estimate.
   for (const p of points.filter(p => p.median?.edge === 'after')) {
@@ -54,7 +60,7 @@ export function drawHistory(container, details, history, archive, selected, cove
     const t = first + (last-first)*i/(ticks-1);
     svg.push(`<text x="${x(t)}" y="${height-23}" text-anchor="${i===0?'start':i===ticks-1?'end':'middle'}" fill="#7b8880" font-size="10">${escape(format(t))}</text>`);
   }
-  svg.push(`<text x="${left}" y="12" fill="#7b8880" font-size="9">PREDICTED ANNOUNCEMENT</text>`, '</svg>');
+  svg.push(`<text x="${left}" y="12" fill="#7b8880" font-size="9">IMPLIED ANNOUNCEMENT</text>`, '</svg>');
   container.innerHTML = svg.join('');
   const cursor = container.querySelector('[data-cursor]');
   const marker = container.querySelector('[data-marker]');
@@ -74,9 +80,9 @@ export function drawHistory(container, details, history, archive, selected, cove
     cursor.setAttribute('x1', x(p.at)); cursor.setAttribute('x2', x(p.at));
     marker.setAttribute('visibility', p.median && !p.median.edge ? 'visible' : 'hidden');
     if (p.median) { marker.setAttribute('cx', x(p.at)); marker.setAttribute('cy', y(p.median.time)); }
-    details.innerHTML = `<div class="tooltip-label">Forecast at</div><div class="tooltip-time">${escape(date(p.at))}</div>` +
+    details.innerHTML = `<div class="tooltip-label">${history[index].reaction ? 'Market reaction at' : 'Forecast at'}</div><div class="tooltip-time">${escape(date(p.at))}</div>` +
       (model.error ? '<p class="tooltip-empty">Not enough quotes at this minute.</p>' :
-        `<div class="tooltip-label">Median ETA</div><div class="tooltip-eta">${escape((p.median.edge ? 'After ' : '') + format(p.median.time))}</div><div class="tooltip-date">${escape(format(p.median.time, {month:'short',day:'numeric',hour:undefined,minute:undefined}))}</div><div class="tooltip-label">${Math.round(coverage*100)}% market-implied range</div><div class="tooltip-range">${escape(label(p.low))}<br>– ${escape(label(p.high))}</div><div class="tooltip-comparison">${escape(comparison(p.median))}</div><div class="tooltip-count">${model.points.length-1} usable contracts</div>`);
+        `<div class="tooltip-label">${p.reaction ? 'Implied announcement time' : 'Median ETA'}</div><div class="tooltip-eta">${escape((p.median.edge ? 'After ' : '') + format(p.median.time))}</div><div class="tooltip-date">${escape(format(p.median.time, {month:'short',day:'numeric',hour:undefined,minute:undefined}))}</div><div class="tooltip-label">${Math.round(coverage*100)}% market-implied range</div><div class="tooltip-range">${escape(label(p.low))}<br>– ${escape(label(p.high))}</div><div class="tooltip-comparison">${escape(comparison(p.median))}</div><div class="tooltip-count">${model.points.length-1} usable contracts${p.reaction ? '<br>Retrospective estimate · interpolated' : ''}</div>`);
     if (notify) select(index);
   }
   show(selected, false);

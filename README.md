@@ -44,13 +44,13 @@ The API cache and last-success fallback are per warm serverless instance, not du
 
 ## Historical archive
 
-`data/history.json` contains minute-end closing bid/ask quotes and contract opening/closing times, not precomputed forecasts. `src/history.mjs` reuses the live model to reconstruct each minute. Hovering selects a snapshot and instantly updates the adjacent forecast tooltip, probability curve, and table. Keyboard arrows and touch also work. The headline remains “Announced,” and the default range is 50%. Range and timezone settings apply to both charts. No final settlement outcome or present-day quote enters an earlier forecast.
+`data/history.json` contains minute-end closing bid/ask quotes and contract opening/closing times, not precomputed forecasts. `src/history.mjs` reuses the live model to reconstruct each minute. Hovering selects a snapshot and instantly updates the adjacent forecast tooltip, probability curve, and table. Keyboard arrows and touch also work. The headline remains “Announced,” and the default range is 50%. Range and timezone settings apply to both charts. A settlement may enter an estimate only when its recorded publication time is at or before that snapshot. Later outcomes and present-day quotes do not enter earlier estimates.
 
-- Observation window: November 13, 2026, 21:50 UTC through November 14, 01:14 UTC.
-- 205 minute slots; 197 have at least two eligible, usable future deadlines. Missing minutes remain gaps.
+- Observation window: November 13, 2026, 21:50 UTC through November 14, 01:25 UTC.
+- 216 minute slots; 208 have at least two eligible, usable future deadlines. Missing minutes remain gaps.
 - Only each minute’s own closing quotes are used. Missing quotes are omitted, with no carry-forward or interpolation across observation times. This can change coverage between minutes; estimates are reconstructions, not exact logs of previously displayed forecasts.
 - The shaded range is omitted when either quantile is unbounded. Unbounded medians use upward markers at their known lower bound. No tail assumption is used to invent quantile endpoints.
-- The horizontal reference is **airspace reopening at 01:15 UTC (8:15 p.m. EST)**, as reported by Secretary Duffy in the [press briefing transcript](https://rollcall.com/factbase/trump/transcript/donald-trump-press-briefing-markwayne-mullin-sean-duffy-faa-ground-stop-november-13-2026/). This is not claimed to be the exact qualifying-announcement timestamp. Kalshi outcomes imply 01:00 ≤ announcement < 01:30 UTC. The [FAA cancellation advisory](https://www.fly.faa.gov/ois/oisedit/adv_oisedit_dis?day=11142026&number=5) is signed 01:19 UTC. Reconstruction stops strictly before reopening.
+- The horizontal reference is **airspace reopening at 01:15 UTC (8:15 p.m. EST)**, as reported by Secretary Duffy in the [press briefing transcript](https://rollcall.com/factbase/trump/transcript/donald-trump-press-briefing-markwayne-mullin-sean-duffy-faa-ground-stop-november-13-2026/). This is not claimed to be the exact qualifying-announcement timestamp. Kalshi outcomes imply 01:00 ≤ announcement < 01:30 UTC. The [FAA cancellation advisory](https://www.fly.faa.gov/ois/oisedit/adv_oisedit_dis?day=11142026&number=5) is signed 01:19 UTC. The solid forecast line ends before reopening. A shaded region and dashed line show the subsequent market reaction through 01:25 UTC.
 
 ### Reproduce
 
@@ -62,13 +62,13 @@ The event endpoint was:
 https://external-api.kalshi.com/trade-api/v2/events/KXFAAGROUNDSTOPLIFT-13NOV26?with_nested_markets=true
 ```
 
-Two pages were retrieved from:
+Three pages were retrieved from:
 
 ```
 https://external-api.kalshi.com/trade-api/v2/series/KXFAAGROUNDSTOPLIFT/events/KXFAAGROUNDSTOPLIFT-13NOV26/candlesticks
 ```
 
-Both used `period_interval=1` and `end_ts=1794618900`. The first used `start_ts=1794606600`, and its `adjusted_end_ts=1794612840` became the second page’s start. The second reached the requested end. Overlapping candles are deduplicated; contradictory overlaps fail the build. Decimal `close_dollars` values are used directly, never last-trade prices or integer-cent assumptions.
+The first two used `period_interval=1` and `end_ts=1794618900`. The first used `start_ts=1794606600`, and its `adjusted_end_ts=1794612840` became the second page’s start. The second reached the requested end. The third used `start_ts=1794618000` and `end_ts=1794620640`, again with one-minute resolution; only periods before 01:26 UTC are displayed. Overlapping candles are deduplicated; contradictory overlaps fail the build. Decimal `close_dollars` values are used directly, never last-trade prices or integer-cent assumptions.
 
 `test/history.test.mjs` checks missing periods, boundary exclusion, pagination, unopened contracts, settlement isolation, and the real archive’s coverage. The settled event’s opening/closing metadata cannot capture any temporary intra-period trading pauses, and candle closes approximate a synchronous order-book snapshot.
 
@@ -97,7 +97,7 @@ The apparent lack of convergence was investigated against both event-level and i
 | 8:23 p.m. | $0.85 | $0.87 | 86% |
 | 8:25 p.m. | $0.89 | $0.90 | 89.5% |
 
-The existing timeline ends at 8:14 p.m. EST and omits this post-reopening repricing. It should not be interpreted as the complete market response through settlement. The cutoff is now explicit in the UI. The forward model’s zero-probability anchor at observation time is invalid once the announcement has occurred, so the ETA line is not artificially extended to force convergence. A future post-announcement view should show contract prices or use a model that allows already-occurred outcomes.
+The timeline now includes repricing through 8:25 p.m. EST as a separate, dashed reaction segment. The original forward model’s zero-probability anchor at observation time is invalid once the announcement has occurred. In the reaction segment, `historyModels` anchors at the latest NO cutoff whose `settlement_ts` is already at or before the observed minute. For these observations that is 8:00 p.m. EST, settled NO at 8:07:09 p.m. The model can therefore place the announcement before the quote observation. It still uses the same quote midpoints, weighting, isotonic fit and linear quantile interpolation. The precise minute within the half-hour cutoff window is interpolation-dependent, not direct evidence. Actual reopening defines a retrospective phase label only; its time and eventual YES outcomes are not used to force a probability or quantile. This segment must not be counted as pre-event predictive accuracy.
 
 Independent arithmetic check at 8:14 p.m. EST: the 4:30 a.m. deadline had a 49% midpoint and the 5:00 a.m. deadline had a 54.5% midpoint. The 50% crossing is 4:35:27 a.m. EST, matching the reconstructed median. This supports the arithmetic, not the forecast’s accuracy.
 
