@@ -8,6 +8,9 @@ const assets = {
   '/client.js': ['src/client.js', 'text/javascript'],
   '/chart.mjs': ['src/chart.mjs', 'text/javascript'],
   '/model.mjs': ['src/model.mjs', 'text/javascript'],
+  '/history.mjs': ['src/history.mjs', 'text/javascript'],
+  '/history-chart.mjs': ['src/history-chart.mjs', 'text/javascript'],
+  '/history.json': ['data/history.json', 'application/json'],
 };
 const port = Number(process.env.PORT || 8766);
 const server = http.createServer(async (req, res) => {

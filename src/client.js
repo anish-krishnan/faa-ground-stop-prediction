@@ -1,10 +1,13 @@
 import { analyze, quantile } from './model.mjs';
 import { drawChart } from './chart.mjs';
+import { historyModels, snapshotAt } from './history.mjs';
+import { drawHistory } from './history-chart.mjs';
 
 const $ = id => document.getElementById(id);
 const HOUR = 3_600_000;
 const REFRESH_MS = 10_000;
 const state = { snapshot: null, model: null, busy: false, error: '', timer: null, backoff: 0 };
+let archive, history, selected = 0;
 const percent = probability => probability == null ? '—' : `${(100 * probability).toFixed(1)}%`;
 const escape = value => String(value).replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -24,6 +27,12 @@ function percentileLabel(result) {
 }
 
 function renderStatus() {
+  if (archive) {
+    $('status').textContent = 'ARCHIVE';
+    $('status').className = 'status';
+    $('updated').textContent = `Kalshi archive · retrieved ${archive.retrievedOn}`;
+    return;
+  }
   const { snapshot, model, error } = state;
   if (!snapshot) {
     $('status').textContent = error ? 'DATA UNAVAILABLE' : 'CONNECTING';
@@ -95,6 +104,7 @@ function renderRows(model) {
   }).join('');
   const volume = model.rows.reduce((total, row) => total + row.volume, 0);
   $('volume').textContent = `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(volume)} contracts traded`;
+  if (archive) $('volume').textContent = `Quotes at ${format(history[selected].at)}`;
 }
 
 function renderUnavailable(model) {
@@ -119,10 +129,24 @@ function render() {
   if (!state.snapshot) return;
   const model = analyze(state.snapshot, Date.parse(state.snapshot.fetchedAt));
   state.model = model;
+  if (archive) {
+    $('historySection').hidden = false;
+    $('heroTitle').textContent = 'FAA ground stop · resolved';
+    $('etaKicker').textContent = 'Historical estimate · median';
+    $('brandMode').textContent = ' / ARCHIVE';
+    $('historyTime').textContent = date(history[selected].at);
+    $('historySlider').value = selected;
+    $('historySlider').setAttribute('aria-valuetext', date(history[selected].at));
+    $('referenceLink').textContent = `Airspace reopened · ${date(archive.reference.at)} ↗`;
+    $('referenceLink').href = archive.reference.url;
+    $('historyRangeLegend').textContent = `${Number($('coverage').value)*100}% range`;
+    drawHistory($('historyChart'), history, archive, selected, Number($('coverage').value), format, selectHistory);
+  }
   const notices = [];
   if (state.error) notices.push(`Showing a stale snapshot: ${state.error}.`);
   if (model.settled) notices.push('Kalshi has settled at least one deadline YES. The window below is established by settled contracts, not an exact FAA timestamp.');
   if (model.error) notices.push(model.error);
+  if (archive && model.error) notices.splice(0, notices.length, 'Insufficient quotes at this minute. Select another time.');
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
@@ -136,7 +160,7 @@ function render() {
   const high = quantile(model.points, (1 + coverage) / 2);
   renderMedian(model.median);
   const wait = (model.median.time - Date.parse(state.snapshot.fetchedAt)) / HOUR;
-  $('countdown').textContent = `${model.median.edge ? 'More than' : 'In about'} ${wait.toFixed(1)} hours`;
+  $('countdown').textContent = archive ? `As of ${date(history[selected].at)}` : `${model.median.edge ? 'More than' : 'In about'} ${wait.toFixed(1)} hours`;
   $('rangeLabel').textContent = `${Math.round(coverage * 100)}% market-implied range`;
   $('range').textContent = `${percentileLabel(low)} – ${percentileLabel(high)}`;
   $('rangeSub').textContent = high.edge === 'after' ? 'Upper endpoint exceeds the listed deadlines.' : '';
@@ -167,8 +191,33 @@ dialog.addEventListener('click', event => {
   if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
 });
 for (const id of ['timezone', 'coverage', 'tailHours', 'band']) $(id).addEventListener('change', render);
-setInterval(renderStatus, 1000);
-load();
+function selectHistory(index) {
+  selected = index;
+  state.snapshot = snapshotAt(archive, archive.frames[index]);
+  render();
+}
+$('historySlider').addEventListener('input', event => selectHistory(Number(event.target.value)));
+
+async function initialize() {
+  try {
+    const response = await fetch('/history.json', { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error('History unavailable');
+    const data = await response.json();
+    if (data.version !== 1 || data.eventTicker !== 'KXFAAGROUNDSTOPLIFT-13NOV26' || !data.frames?.length) throw new Error('Invalid history');
+    const models = historyModels(data);
+    const lastUsable = models.findLastIndex(p => !p.model.error);
+    if (lastUsable < 0) throw new Error('No historical estimates');
+    archive = data; history = models;
+    $('historySlider').max = history.length - 1;
+    selectHistory(lastUsable);
+  } catch {
+    $('historySection').hidden = false;
+    $('historySection').textContent = 'Historical data unavailable. Showing the latest market snapshot.';
+    setInterval(renderStatus, 1000);
+    load();
+  }
+}
+initialize();
 
 let resizeFrame;
 window.addEventListener('resize', () => {

@@ -7,6 +7,9 @@ const assets = {
   'src/client.js': 'client.js',
   'src/chart.mjs': 'chart.mjs',
   'src/model.mjs': 'model.mjs',
+  'src/history.mjs': 'history.mjs',
+  'src/history-chart.mjs': 'history-chart.mjs',
+  'data/history.json': 'history.json',
 };
 await rm(new URL('./public/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('./public/', import.meta.url), { recursive: true });

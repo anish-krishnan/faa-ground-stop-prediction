@@ -11,6 +11,7 @@
     "start": "node dev.mjs",
     "build": "node build.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/client.js && node --check src/chart.mjs && node --check src/model.mjs && node --check api/market.mjs"
+    "check": "node --check src/client.js && node --check src/chart.mjs && node --check src/model.mjs && node --check api/market.mjs && node --check src/history.mjs && node --check src/history-chart.mjs",
+    "archive": "node scripts/build-history.mjs"
   }
 }
