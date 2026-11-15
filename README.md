@@ -44,7 +44,7 @@ The API cache and last-success fallback are per warm serverless instance, not du
 
 ## Historical archive
 
-`data/history.json` contains minute-end closing bid/ask quotes and contract opening/closing times, not precomputed forecasts. `src/history.mjs` reuses the live model to reconstruct each minute. The slider selects one snapshot and updates the ETA, probability curve, and table together. Range and timezone settings apply to both charts. No final settlement outcome or present-day quote enters an earlier forecast.
+`data/history.json` contains minute-end closing bid/ask quotes and contract opening/closing times, not precomputed forecasts. `src/history.mjs` reuses the live model to reconstruct each minute. Hovering selects a snapshot and instantly updates the adjacent forecast tooltip, probability curve, and table. Keyboard arrows and touch also work. The headline remains “Announced,” and the default range is 50%. Range and timezone settings apply to both charts. No final settlement outcome or present-day quote enters an earlier forecast.
 
 - Observation window: November 13, 2026, 21:50 UTC through November 14, 01:14 UTC.
 - 205 minute slots; 197 have at least two eligible, usable future deadlines. Missing minutes remain gaps.
@@ -85,3 +85,20 @@ The event resolves on the FAA's official nationwide lifting announcement, not a 
 - https://docs.kalshi.com/getting_started/quick_start_market_data
 - https://vercel.com/docs/functions/runtimes/node-js
 - https://vercel.com/docs/project-configuration/vercel-json
+
+## Convergence audit (November 15, 2026)
+
+The apparent lack of convergence was investigated against both event-level and individual-market candlestick endpoints. For `KXFAAGROUNDSTOPLIFT-13NOV26-13NOV262030`, all 13 minute-end bid/ask observations from 01:13–01:25 UTC matched between endpoints. The following midpoint probabilities come directly from those quotes:
+
+| Observation (Nov 13 EST) | YES bid | YES ask | Midpoint |
+| --- | --- | --- | --- |
+| 8:14 p.m. | $0.00 | $0.02 | 1% |
+| 8:19 p.m. | $0.21 | $0.63 | 42% |
+| 8:23 p.m. | $0.85 | $0.87 | 86% |
+| 8:25 p.m. | $0.89 | $0.90 | 89.5% |
+
+The existing timeline ends at 8:14 p.m. EST and omits this post-reopening repricing. It should not be interpreted as the complete market response through settlement. The cutoff is now explicit in the UI. The forward model’s zero-probability anchor at observation time is invalid once the announcement has occurred, so the ETA line is not artificially extended to force convergence. A future post-announcement view should show contract prices or use a model that allows already-occurred outcomes.
+
+Independent arithmetic check at 8:14 p.m. EST: the 4:30 a.m. deadline had a 49% midpoint and the 5:00 a.m. deadline had a 54.5% midpoint. The 50% crossing is 4:35:27 a.m. EST, matching the reconstructed median. This supports the arithmetic, not the forecast’s accuracy.
+
+Individual-contract audit source: `https://external-api.kalshi.com/trade-api/v2/series/KXFAAGROUNDSTOPLIFT/markets/KXFAAGROUNDSTOPLIFT-13NOV26-13NOV262030/candlesticks?start_ts=1794618780&end_ts=1794619500&period_interval=1`.

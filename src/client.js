@@ -125,33 +125,44 @@ function renderUnavailable(model) {
   $('mathExample').textContent = 'A forward worked example is unavailable for this snapshot.';
 }
 
-function render() {
+function renderArchiveHero() {
+  if (!archive) return;
+  $('etaKicker').textContent = 'Nationwide ground stop';
+  $('median').textContent = 'Announced';
+  $('median').classList.add('word');
+  $('medianDate').textContent = 'Qualifying outcome confirmed by Kalshi';
+  $('countdown').textContent = '';
+  $('rangeLabel').textContent = 'Announcement window';
+  $('range').textContent = `${date(archive.settlement.earliest)} – before ${date(archive.settlement.latest)}`;
+  $('rangeSub').textContent = '';
+}
+
+function render(redrawHistory = true) {
   if (!state.snapshot) return;
   const model = analyze(state.snapshot, Date.parse(state.snapshot.fetchedAt));
   state.model = model;
   if (archive) {
     $('historySection').hidden = false;
     $('heroTitle').textContent = 'FAA ground stop · resolved';
-    $('etaKicker').textContent = 'Historical estimate · median';
     $('brandMode').textContent = ' / ARCHIVE';
-    $('historyTime').textContent = date(history[selected].at);
-    $('historySlider').value = selected;
-    $('historySlider').setAttribute('aria-valuetext', date(history[selected].at));
     $('referenceLink').textContent = `Airspace reopened · ${date(archive.reference.at)} ↗`;
     $('referenceLink').href = archive.reference.url;
     $('historyRangeLegend').textContent = `${Number($('coverage').value)*100}% range`;
-    drawHistory($('historyChart'), history, archive, selected, Number($('coverage').value), format, selectHistory);
+    $('historyBoundary').textContent = `Forecasts through ${format(archive.frames.at(-1).at)} · pre-reopening only`;
+    if (redrawHistory) drawHistory($('historyChart'), $('historyDetails'), history, archive, selected, Number($('coverage').value), format, index => selectHistory(index, false));
   }
   const notices = [];
   if (state.error) notices.push(`Showing a stale snapshot: ${state.error}.`);
   if (model.settled) notices.push('Kalshi has settled at least one deadline YES. The window below is established by settled contracts, not an exact FAA timestamp.');
   if (model.error) notices.push(model.error);
-  if (archive && model.error) notices.splice(0, notices.length, 'Insufficient quotes at this minute. Select another time.');
+  // The adjacent tooltip explains archive gaps without shifting the page under the pointer.
+  if (archive && model.error) notices.splice(0, notices.length);
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
   if (model.settled || model.error) {
     renderUnavailable(model);
+    renderArchiveHero();
     renderStatus();
     return;
   }
@@ -173,6 +184,7 @@ function render() {
   $('quality').textContent = `${model.points.length - 1} usable contracts · ${model.excluded} excluded · max fit adjustment ${(100 * model.adjustment).toFixed(1)} pp`;
   drawChart(model, low, high, date, format);
   renderMathExample(model);
+  renderArchiveHero();
   renderStatus();
 }
 
@@ -191,12 +203,11 @@ dialog.addEventListener('click', event => {
   if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
 });
 for (const id of ['timezone', 'coverage', 'tailHours', 'band']) $(id).addEventListener('change', render);
-function selectHistory(index) {
+function selectHistory(index, redrawHistory = true) {
   selected = index;
   state.snapshot = snapshotAt(archive, archive.frames[index]);
-  render();
+  render(redrawHistory);
 }
-$('historySlider').addEventListener('input', event => selectHistory(Number(event.target.value)));
 
 async function initialize() {
   try {
@@ -208,7 +219,6 @@ async function initialize() {
     const lastUsable = models.findLastIndex(p => !p.model.error);
     if (lastUsable < 0) throw new Error('No historical estimates');
     archive = data; history = models;
-    $('historySlider').max = history.length - 1;
     selectHistory(lastUsable);
   } catch {
     $('historySection').hidden = false;

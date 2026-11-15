@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { buildFrames, historyModels } from '../src/history.mjs';
-import { EVENT } from '../src/model.mjs';
+import { EVENT, analyze } from '../src/model.mjs';
 
 const root = new URL('../', import.meta.url);
 const inputs = ['event', 'candles-1', 'candles-2'];
@@ -23,6 +23,7 @@ const markets = event.event.markets.map(m => ({
 const archive = {
   version: 1, eventTicker: EVENT, resolutionSeconds: 60, retrievedOn: '2026-11-15',
   source, start, endExclusive,
+  settlement: { earliest: analyze(event).earliest, latest: analyze(event).latest },
   reference: { at: endExclusive, label: 'Airspace reopened',
     url: 'https://rollcall.com/factbase/trump/transcript/donald-trump-press-briefing-markwayne-mullin-sean-duffy-faa-ground-stop-november-13-2026/' },
   advisory: { at: Date.parse('2026-11-14T01:19:00Z'),

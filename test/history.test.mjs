@@ -50,4 +50,9 @@ test('archive is ordered, pre-reopening, and retains unbounded percentiles', asy
   const first = history.find(p=>!p.model.error);
   assert.equal(quantile(first.model.points,.9).edge,'after');
   assert.ok(first.model.median.time < history.at(-1).model.median.time);
+  // Independent check from the audited 49% / 54.5% closing midpoints.
+  const expected = Date.parse('2026-11-14T09:30:00Z') + (0.50-0.49)/(0.545-0.49)*1800000;
+  assert.ok(Math.abs(history.at(-1).model.median.time-expected) < 1);
+  assert.equal(archive.settlement.earliest, Date.parse('2026-11-14T01:00:00Z'));
+  assert.equal(archive.settlement.latest, Date.parse('2026-11-14T01:30:00Z'));
 });

@@ -1,7 +1,7 @@
 import { quantile } from './model.mjs';
 const escape = text => String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function drawHistory(container, history, archive, selected, coverage, format, select) {
+export function drawHistory(container, details, history, archive, selected, coverage, format, select) {
   const width = Math.max(280, container.clientWidth), height = 320;
   const left = width < 550 ? 73 : 100, right = 18, top = 22, bottom = 46;
   const points = history.map(p => p.model.error ? { at: p.at } : {
@@ -10,7 +10,7 @@ export function drawHistory(container, history, archive, selected, coverage, for
     high: quantile(p.model.points, (1 + coverage) / 2),
   });
   const values = points.flatMap(p => [p.low?.time, p.high?.time, p.median?.time]).filter(Number.isFinite);
-  const first = points[0].at, last = points.at(-1).at;
+  const first = points[0].at, last = Math.max(points.at(-1).at, archive.reference.at);
   const min = Math.min(archive.reference.at, ...values), max = Math.max(archive.reference.at, ...values);
   const padding = Math.max(60000, (max - min) * .05);
   const x = t => left + (t - first) / (last - first || 1) * (width - left - right);
@@ -37,6 +37,8 @@ export function drawHistory(container, history, archive, selected, coverage, for
   }
   const actualY = y(archive.reference.at);
   svg.push(`<line x1="${left}" x2="${width-right}" y1="${actualY}" y2="${actualY}" stroke="#50695c" stroke-dasharray="5 4"/>`);
+  svg.push(`<circle cx="${x(archive.reference.at)}" cy="${actualY}" r="5.5" fill="#2f855c" stroke="#f8f9f5" stroke-width="2"/>`);
+  svg.push(`<text x="${x(archive.reference.at)-10}" y="${actualY-10}" text-anchor="end" fill="#2f855c" font-size="10" font-weight="600">Lifted ${escape(format(archive.reference.at))}</text>`);
   for (const run of runs(p => p.median && !p.median.edge)) {
     svg.push(`<path d="${path(run, 'median')}" fill="none" stroke="#de773e" stroke-width="2.5" stroke-linejoin="round"/>`);
   }
@@ -45,8 +47,8 @@ export function drawHistory(container, history, archive, selected, coverage, for
     svg.push(`<path d="M${x(p.at)-3},${y(p.median.time)+3} l3,-6 l3,6" fill="none" stroke="#de773e"/>`);
   }
   const point = points[selected];
-  svg.push(`<line x1="${x(point.at)}" x2="${x(point.at)}" y1="${top}" y2="${height-bottom}" stroke="#88988d" stroke-dasharray="2 4"/>`);
-  if (point.median && !point.median.edge) svg.push(`<circle cx="${x(point.at)}" cy="${y(point.median.time)}" r="4.5" fill="#243b33" stroke="#f8f9f5" stroke-width="2"/>`);
+  svg.push(`<line data-cursor x1="${x(point.at)}" x2="${x(point.at)}" y1="${top}" y2="${height-bottom}" stroke="#88988d" stroke-dasharray="2 4"/>`);
+  svg.push('<circle data-marker r="4.5" fill="#243b33" stroke="#f8f9f5" stroke-width="2"/>');
   const ticks = width < 550 ? 3 : 5;
   for (let i = 0; i < ticks; i++) {
     const t = first + (last-first)*i/(ticks-1);
@@ -54,11 +56,45 @@ export function drawHistory(container, history, archive, selected, coverage, for
   }
   svg.push(`<text x="${left}" y="12" fill="#7b8880" font-size="9">PREDICTED ANNOUNCEMENT</text>`, '</svg>');
   container.innerHTML = svg.join('');
-  container.onclick = event => {
+  const cursor = container.querySelector('[data-cursor]');
+  const marker = container.querySelector('[data-marker]');
+  const date = t => format(t, { month: 'short', day: 'numeric', timeZoneName: 'short' });
+  const label = q => !q ? 'Unavailable' : `${q.edge === 'after' ? 'After ' : q.edge === 'before' ? 'Before ' : ''}${date(q.time)}`;
+  function comparison(median) {
+    if (median.edge) return 'Median exceeds the listed deadlines.';
+    const minutes = Math.round((median.time - archive.reference.at) / 60000);
+    if (!minutes) return 'Within 1 min of reopening';
+    const duration = `${Math.floor(Math.abs(minutes)/60) ? `${Math.floor(Math.abs(minutes)/60)}h ` : ''}${Math.abs(minutes)%60}m`;
+    return `${duration} ${minutes > 0 ? 'later' : 'earlier'} than reopening`;
+  }
+  let current = selected;
+  function show(index, notify = true) {
+    current = index;
+    const p = points[index], model = history[index].model;
+    cursor.setAttribute('x1', x(p.at)); cursor.setAttribute('x2', x(p.at));
+    marker.setAttribute('visibility', p.median && !p.median.edge ? 'visible' : 'hidden');
+    if (p.median) { marker.setAttribute('cx', x(p.at)); marker.setAttribute('cy', y(p.median.time)); }
+    details.innerHTML = `<div class="tooltip-label">Forecast at</div><div class="tooltip-time">${escape(date(p.at))}</div>` +
+      (model.error ? '<p class="tooltip-empty">Not enough quotes at this minute.</p>' :
+        `<div class="tooltip-label">Median ETA</div><div class="tooltip-eta">${escape((p.median.edge ? 'After ' : '') + format(p.median.time))}</div><div class="tooltip-date">${escape(format(p.median.time, {month:'short',day:'numeric',hour:undefined,minute:undefined}))}</div><div class="tooltip-label">${Math.round(coverage*100)}% market-implied range</div><div class="tooltip-range">${escape(label(p.low))}<br>– ${escape(label(p.high))}</div><div class="tooltip-comparison">${escape(comparison(p.median))}</div><div class="tooltip-count">${model.points.length-1} usable contracts</div>`);
+    if (notify) select(index);
+  }
+  show(selected, false);
+  function inspect(event) {
     const rect = container.querySelector('svg').getBoundingClientRect();
     const scale = Math.min(rect.width / width, rect.height / height);
     const offset = (rect.width - width * scale) / 2;
     const t = first + ((event.clientX - rect.left - offset) / scale - left) / (width-left-right) * (last-first);
-    select(Math.max(0, Math.min(history.length-1, Math.round((t-first)/60000))));
+    const index = Math.max(0, Math.min(history.length-1, Math.round((t-first)/60000)));
+    if (index !== current) show(index);
+  }
+  container.onpointermove = inspect;
+  container.onpointerdown = inspect;
+  container.onclick = null;
+  container.onkeydown = event => {
+    const keys = {ArrowLeft:current-1, ArrowRight:current+1, Home:0, End:history.length-1};
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    show(Math.max(0, Math.min(history.length-1, keys[event.key])));
   };
 }
