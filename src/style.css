@@ -21,3 +21,5 @@ dialog{border:1px solid #d8e2d8;background:#fcfcf9;border-radius:18px;max-width:
 
 
 .distribution-snapshot{margin:0 0 14px;text-align:right}.eta-kicker:empty,.eta-date:empty{display:none}.history-foot{justify-content:flex-end}
+
+.math-extra{margin:24px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0}.math-extra summary{cursor:pointer;font-size:12px;color:var(--ink)}.math-extra summary:focus-visible{outline:2px solid var(--orange);outline-offset:4px}.math-extra[open] summary{margin-bottom:16px}

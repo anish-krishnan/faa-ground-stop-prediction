@@ -87,13 +87,12 @@ function renderMedian(result) {
 function renderMathExample(model) {
   const index = model.points.findIndex(point => point.p >= 0.5);
   if (index < 1) {
-    $('mathExample').textContent = 'The listed deadlines do not bracket 50%, so a precise median is unavailable.';
+    $('mathExample').textContent = 'No bracketed 50% crossing in this snapshot.';
     return;
   }
   const a = model.points[index - 1];
   const b = model.points[index];
-  const fraction = (0.5 - a.p) / (b.p - a.p);
-  $('mathExample').textContent = `This snapshot: ${percent(a.p)} at ${date(a.t)}, and ${percent(b.p)} at ${date(b.t)}. The 50% crossing is ${(fraction * 100).toFixed(0)}% of the way between those times: approximately ${date(model.median.time)}.`;
+  $('mathExample').textContent = `This snapshot: ${percent(a.p)} at ${date(a.t)} → ${percent(b.p)} at ${date(b.t)}. Median: ${date(model.median.time)}.`;
 }
 
 function renderRows(model) {
