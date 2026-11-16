@@ -33,8 +33,8 @@
   <div class="chart-bottom"><span id="quality"></span></div>
 </section>
 <section class="chart-card" aria-labelledby="densityTitle">
-  <div class="section-top"><h2 id="densityTitle">Fitted density · PDF</h2><span class="fine">CDF slope</span></div>
-  <p class="chart-caption">Area over an interval is its probability. Taller sections concentrate more probability per hour.</p>
+  <div class="section-top"><h2 id="densityTitle">Fitted density · PDF</h2><label class="density-scale" for="densityScale">Scale <select id="densityScale" aria-label="Density scale" aria-controls="density rawDensity"><option value="sqrt" selected>Detail (√)</option><option value="linear">Linear</option></select></label></div>
+  <p id="densityCaption" class="chart-caption">Square-root scale reveals smaller densities. Use Linear to read area as probability.</p>
   <p id="densitySnapshot" class="fine"></p>
   <div class="legend"><span><i class="orange"></i> Implied density</span><span>Same time axis · shared density scale</span></div>
   <div id="density" class="chart" tabindex="0" role="group" aria-describedby="densityHover" aria-label="Fitted probability density. Hover, tap, or use arrow keys to inspect an interval."></div>
@@ -51,7 +51,7 @@
 </section>
 <section class="chart-card raw-card" aria-labelledby="rawDensityTitle">
   <div class="section-top"><h2 id="rawDensityTitle">Raw density</h2><span class="fine">Before fitting</span></div>
-  <p class="chart-caption">Slope of the raw curve. Red regions are negative, so this is not always a valid PDF.</p>
+  <p class="chart-caption">Slope of the raw curve, using the scale above. Red regions are invalid negative density.</p>
   <p id="rawDensitySnapshot" class="fine"></p>
   <div class="legend"><span><i class="raw"></i> Raw slope</span><span><i class="decrease"></i> Invalid negative density</span></div>
   <div id="rawDensity" class="chart" tabindex="0" role="group" aria-describedby="rawDensityHover" aria-label="Raw curve derivative. Hover, tap, or use arrow keys to inspect an interval."></div>

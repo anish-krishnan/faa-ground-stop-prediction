@@ -153,6 +153,9 @@ function renderArchiveHero() {
 
 function render(redrawHistory = true) {
   if (!state.snapshot) return;
+  $('densityCaption').textContent = $('densityScale').value === 'sqrt'
+    ? 'Square-root scale reveals smaller densities. Use Linear to read area as probability.'
+    : 'Area over an interval is its probability. Taller sections concentrate more probability per hour.';
   const model = archive ? history[selected].model : analyze(state.snapshot);
   state.model = model;
   if (archive) {
@@ -220,7 +223,7 @@ dialog.addEventListener('click', event => {
   const box = dialog.getBoundingClientRect();
   if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
 });
-for (const id of ['timezone', 'coverage', 'tailHours', 'band']) $(id).addEventListener('change', render);
+for (const id of ['timezone', 'coverage', 'tailHours', 'band', 'densityScale']) $(id).addEventListener('change', render);
 function selectHistory(index, redrawHistory = true) {
   selected = index;
   state.snapshot = snapshotAt(archive, archive.frames[index]);
