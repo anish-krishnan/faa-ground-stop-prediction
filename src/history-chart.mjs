@@ -48,9 +48,10 @@ export function drawHistory(container, details, history, archive, selected, cove
   for (const run of runs(p => p.median && !p.median.edge && p.reaction)) {
     svg.push(`<path d="${path(run, 'median')}" fill="none" stroke="#de773e" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="4 3"/>`);
   }
-  // A triangle denotes a lower bound, never a finite median estimate.
-  for (const p of points.filter(p => p.median?.edge === 'after')) {
-    svg.push(`<path d="M${x(p.at)-3},${y(p.median.time)+3} l3,-6 l3,6" fill="none" stroke="#de773e"/>`);
+  // Triangles point toward the unobserved tail; they are bounds, not finite medians.
+  for (const p of points.filter(p => p.median?.edge)) {
+    const direction = p.median.edge === 'after' ? 1 : -1;
+    svg.push(`<path d="M${x(p.at)-3},${y(p.median.time)+3*direction} l3,${-6*direction} l3,${6*direction}" fill="none" stroke="#de773e"/>`);
   }
   const point = points[selected];
   svg.push(`<line data-cursor x1="${x(point.at)}" x2="${x(point.at)}" y1="${top}" y2="${height-bottom}" stroke="#88988d" stroke-dasharray="2 4"/>`);
@@ -67,7 +68,7 @@ export function drawHistory(container, details, history, archive, selected, cove
   const date = t => format(t, { month: 'short', day: 'numeric', timeZoneName: 'short' });
   const label = q => !q ? 'Unavailable' : `${q.edge === 'after' ? 'After ' : q.edge === 'before' ? 'Before ' : ''}${date(q.time)}`;
   function comparison(median) {
-    if (median.edge) return 'Median exceeds the listed deadlines.';
+    if (median.edge) return 'Only a median bound is available.';
     const minutes = Math.round((median.time - archive.reference.at) / 60000);
     if (!minutes) return 'Within 1 min of reopening';
     const duration = `${Math.floor(Math.abs(minutes)/60) ? `${Math.floor(Math.abs(minutes)/60)}h ` : ''}${Math.abs(minutes)%60}m`;
@@ -82,7 +83,7 @@ export function drawHistory(container, details, history, archive, selected, cove
     if (p.median) { marker.setAttribute('cx', x(p.at)); marker.setAttribute('cy', y(p.median.time)); }
     details.innerHTML = `<div class="tooltip-label">${history[index].reaction ? 'Market reaction at' : 'Forecast at'}</div><div class="tooltip-time">${escape(date(p.at))}</div>` +
       (model.error ? '<p class="tooltip-empty">Not enough quotes at this minute.</p>' :
-        `<div class="tooltip-label">${p.reaction ? 'Implied announcement time' : 'Median ETA'}</div><div class="tooltip-eta">${escape((p.median.edge ? 'After ' : '') + format(p.median.time))}</div><div class="tooltip-date">${escape(format(p.median.time, {month:'short',day:'numeric',hour:undefined,minute:undefined}))}</div><div class="tooltip-label">${Math.round(coverage*100)}% market-implied range</div><div class="tooltip-range">${escape(label(p.low))}<br>– ${escape(label(p.high))}</div><div class="tooltip-comparison">${escape(comparison(p.median))}</div><div class="tooltip-count">${model.points.length-1} usable contracts${p.reaction ? '<br>Retrospective estimate · interpolated' : ''}</div>`);
+        `<div class="tooltip-label">Median announcement time</div><div class="tooltip-eta">${escape((p.median.edge === 'after' ? 'After ' : p.median.edge === 'before' ? 'Before ' : '') + format(p.median.time))}</div><div class="tooltip-date">${escape(format(p.median.time, {month:'short',day:'numeric',hour:undefined,minute:undefined}))}</div><div class="tooltip-label">${Math.round(coverage*100)}% market-implied range</div><div class="tooltip-range">${escape(label(p.low))}<br>– ${escape(label(p.high))}</div><div class="tooltip-comparison">${escape(comparison(p.median))}</div><div class="tooltip-count">${model.quoteCount} quotes · ${model.settlementCount} settled${p.reaction ? '<br>After reopening · same method' : ''}</div>`);
     if (notify) select(index);
   }
   show(selected, false);

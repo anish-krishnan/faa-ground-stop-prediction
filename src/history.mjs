@@ -1,32 +1,43 @@
 import { analyze, EVENT } from './model.mjs';
 
-/** Reconstruct only from this minute's closing quotes. No forward fill or settlement leakage. */
-export function snapshotAt(archive, frame) {
+/** Carry old quotes for display only. Fits use this minute's quotes and as-of settlements. */
+export function snapshotAt(archive, frame, lastQuotes) {
+  const remember = (quotes, observation) => {
+    for (const [index, bid, ask] of observation.quotes) {
+      const market = archive.markets[index];
+      if (!market || observation.at < market.open || observation.at > market.close) continue;
+      if (!quotes.has(index) || quotes.get(index).at <= observation.at) quotes.set(index, { bid, ask, at: observation.at });
+    }
+  };
+  if (!lastQuotes) {
+    lastQuotes = new Map();
+    for (const prior of archive.frames || []) {
+      if (prior.at > frame.at) continue;
+      remember(lastQuotes, prior);
+    }
+  }
+  remember(lastQuotes, frame);
   return {
     fetchedAt: new Date(frame.at).toISOString(),
-    event: { event_ticker: EVENT, markets: frame.quotes.flatMap(([index, bid, ask]) => {
-      const market = archive.markets[index];
-      if (!market || market.open > frame.at || market.close <= frame.at) return [];
-      return [{ ticker: market.ticker, status: 'active', result: '',
-        yes_bid_dollars: bid, yes_ask_dollars: ask }];
+    event: { event_ticker: EVENT, markets: archive.markets.flatMap((market, index) => {
+      if (market.open > frame.at) return [];
+      const quote = lastQuotes.get(index);
+      const result = Number.isFinite(market.settledAt) && market.settledAt <= frame.at ? market.result : '';
+      const closed = market.close <= frame.at;
+      return [{ ticker: market.ticker, status: result ? 'finalized' : closed ? 'closed' : 'active', result,
+        quotedAt: quote?.at ?? null, quoteStale: Boolean(quote && (quote.at !== frame.at || closed || result)),
+        yes_bid_dollars: quote?.bid, yes_ask_dollars: quote?.ask }];
     }) },
   };
 }
 
 export function historyModels(archive) {
+  const lastQuotes = new Map();
   return archive.frames.map(frame => {
     const reaction = frame.at >= archive.reference.at;
-    // Retrospective reaction estimates may put the event in the past. Anchor only
-    // at a NO cutoff whose settlement was already public at this observation.
-    // The eventual YES outcome and actual reopening time do not set the CDF value.
-    const knownNo = (archive.noSettlements || [])
-      .filter(s => s.knownAt <= frame.at && s.t <= frame.at && Number.isFinite(s.t))
-      .reduce((latest, s) => Math.max(latest, s.t), -Infinity);
-    const anchor = reaction ? knownNo : frame.at;
-    const model = Number.isFinite(anchor)
-      ? analyze(snapshotAt(archive, frame), anchor)
-      : { rows: [], points: [], error: 'No previously settled NO cutoff for a retrospective estimate.' };
-    return { at: frame.at, reaction, anchor, model };
+    // Reopening changes the line style only, never the estimation method.
+    const model = analyze(snapshotAt(archive, frame, lastQuotes));
+    return { at: frame.at, reaction, model };
   });
 }
 

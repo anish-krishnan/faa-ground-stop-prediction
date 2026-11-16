@@ -8,8 +8,9 @@ export function drawChart(model, low, high, formatDate, formatTime) {
   const width = Math.max(280, $('chart').clientWidth);
   const height = Math.max(220, $('chart').clientHeight);
   const left = 48, right = 22, top = 15, bottom = 42;
-  const firstTime = model.points[0].t;
-  const finalTime = model.last;
+  const single = model.points.length === 1;
+  const firstTime = model.points[0].t - (single ? 900000 : 0);
+  const finalTime = model.last + (single ? 900000 : 0);
   const x = time => left + (time - firstTime) / (finalTime - firstTime) * (width - left - right);
   const y = probability => top + (1 - probability) * (height - top - bottom);
   const path = (points, key) => points.map((point, index) =>
@@ -18,7 +19,7 @@ export function drawChart(model, low, high, formatDate, formatTime) {
 
   const svg = [
     `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Cumulative probability by announcement deadline">`,
-    `<rect x="${x(low.time)}" y="${top}" width="${Math.max(0, x(high.time) - x(low.time))}" height="${height - top - bottom}" fill="#eaf0eb"/>`,
+    ...(!low.edge && !high.edge ? [`<rect x="${x(low.time)}" y="${top}" width="${Math.max(0, x(high.time) - x(low.time))}" height="${height - top - bottom}" fill="#eaf0eb"/>`] : []),
   ];
   for (let p = 0; p <= 1; p += 0.25) {
     svg.push(`<line x1="${left}" y1="${y(p)}" x2="${width - right}" y2="${y(p)}" stroke="#e5eae5" stroke-dasharray="${p === 0.5 ? '4 4' : '0'}"/>`);
@@ -29,9 +30,12 @@ export function drawChart(model, low, high, formatDate, formatTime) {
     svg.push(`<path d="${path(model.points, 'high')} ${lowerEdge} Z" fill="#e46d32" fill-opacity=".14"/>`);
   }
   svg.push(`<path d="${path(model.points, 'p')}" stroke="#df7136" stroke-width="2.7" fill="none"/>`);
-  const quotedRows = model.rows.filter(row => row.fitted != null);
+  const quotedRows = model.rows.filter(row => row.fitted != null && !row.result);
   for (const row of quotedRows) {
     svg.push(`<circle cx="${x(row.t)}" cy="${y(row.raw)}" r="3" stroke="#df7136" fill="white"><title>${escape(formatDate(row.t))} · midpoint ${percent(row.raw)} · bid ${percent(row.bid)} / ask ${percent(row.ask)}</title></circle>`);
+  }
+  for (const point of model.points.filter(point => point.result)) {
+    svg.push(`<rect x="${x(point.t)-3}" y="${y(point.p)-3}" width="6" height="6" fill="#2f855c"><title>${escape(formatDate(point.t))} · settled ${point.result.toUpperCase()} · ${percent(point.p)}</title></rect>`);
   }
   if (!model.median.edge) {
     svg.push(`<line x1="${x(model.median.time)}" x2="${x(model.median.time)}" y1="${y(0.5)}" y2="${y(0)}" stroke="#75877c" stroke-dasharray="3 4"/>`);
@@ -53,7 +57,7 @@ export function drawChart(model, low, high, formatDate, formatTime) {
     const offset = (rect.width - width * scale) / 2;
     const position = (event.clientX - rect.left - offset) / scale;
     const time = firstTime + (position - left) / (width - left - right) * (finalTime - firstTime);
-    const row = quotedRows.reduce((previous, current) => Math.abs(current.t - time) < Math.abs(previous.t - time) ? current : previous);
-    $('hover').textContent = `${formatDate(row.t)} · Fitted ${percent(row.fitted)} · Raw midpoint ${percent(row.raw)} · YES bid / ask ${percent(row.bid)} / ${percent(row.ask)}`;
+    const row = model.rows.filter(row => row.fitted != null).reduce((previous, current) => Math.abs(current.t - time) < Math.abs(previous.t - time) ? current : previous);
+    $('hover').textContent = row.result ? `${formatDate(row.t)} · Settled ${row.result.toUpperCase()} · ${percent(row.fitted)}` : `${formatDate(row.t)} · Fitted ${percent(row.fitted)} · Raw midpoint ${percent(row.raw)} · YES bid / ask ${percent(row.bid)} / ${percent(row.ask)}`;
   };
 }

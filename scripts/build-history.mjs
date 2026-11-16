@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { buildFrames, historyModels } from '../src/history.mjs';
-import { EVENT, analyze, deadline } from '../src/model.mjs';
+import { EVENT, analyze } from '../src/model.mjs';
 
 const root = new URL('../', import.meta.url);
 const inputs = ['event', 'candles-1', 'candles-2', 'candles-reaction'];
@@ -19,14 +19,12 @@ const start = Date.parse('2026-11-13T21:50:00Z');
 const endExclusive = Date.parse('2026-11-14T01:26:00Z');
 const markets = event.event.markets.map(m => ({
   ticker: m.ticker, open: Date.parse(m.open_time), close: Date.parse(m.close_time),
+  result: m.result || '', settledAt: Date.parse(m.settlement_ts),
 }));
 const archive = {
-  version: 1, eventTicker: EVENT, resolutionSeconds: 60, retrievedOn: '2026-11-15',
+  version: 2, eventTicker: EVENT, resolutionSeconds: 60, retrievedOn: '2026-11-15',
   source, start, endExclusive,
   settlement: { earliest: analyze(event).earliest, latest: analyze(event).latest },
-  noSettlements: event.event.markets.filter(m => m.result === 'no').map(m => ({
-    t: deadline(m), knownAt: Date.parse(m.settlement_ts),
-  })),
   reference: { at: Date.parse('2026-11-14T01:15:00Z'), label: 'Airspace reopened',
     url: 'https://rollcall.com/factbase/trump/transcript/donald-trump-press-briefing-markwayne-mullin-sean-duffy-faa-ground-stop-november-13-2026/' },
   advisory: { at: Date.parse('2026-11-14T01:19:00Z'),

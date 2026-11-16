@@ -27,9 +27,13 @@ test('later quotes and current settlement cannot change earlier forecasts', () =
   assert.equal(snapshot.event.markets[0].result,'');
   assert.equal(snapshot.event.markets[0].yes_bid_dollars,.2);
 });
-test('unopened and closed contracts are excluded at observation time', () => {
+test('unopened contracts are hidden; closed contracts remain visible without an assumed outcome', () => {
   const archive = {markets: [{...markets[0],open:start+1},{...markets[1],close:start}, markets[2]]};
-  assert.deepEqual(snapshotAt(archive,{at:start,quotes:[[0,.1,.2],[1,.2,.3],[2,.3,.4]]}).event.markets.map(m=>m.ticker),[markets[2].ticker]);
+  const snapshot = snapshotAt(archive,{at:start,quotes:[[0,.1,.2],[1,.2,.3],[2,.3,.4]]});
+  assert.deepEqual(snapshot.event.markets.map(m=>m.ticker),[markets[1].ticker,markets[2].ticker]);
+  const result=analyze(snapshot);
+  assert.equal(result.rows[0].status,'closed'); assert.equal(result.rows[0].result,'');
+  assert.equal(result.rows[0].fitted,undefined); assert.equal(result.quoteCount,1);
 });
 test('overlapping pagination deduplicates identical candles and rejects conflicting data', () => {
   assert.deepEqual(buildFrames(markets,[page,page],{start,endExclusive:start+60000}), buildFrames(markets,[page],{start,endExclusive:start+60000}));
@@ -45,7 +49,6 @@ test('archive preserves forecasts and separates the subsequent reaction', async 
     assert.ok(history[i].at < archive.endExclusive);
     if(i) assert.equal(history[i].at-history[i-1].at,60000);
     assert.ok(!history[i].model.settled);
-    if(!history[i].model.error && !history[i].reaction) assert.ok(history[i].model.median.time >= history[i].at);
   }
   const first = history.find(p=>!p.model.error);
   assert.equal(quantile(first.model.points,.9).edge,'after');
@@ -54,19 +57,55 @@ test('archive preserves forecasts and separates the subsequent reaction', async 
   // Independent check from the audited 49% / 54.5% closing midpoints.
   const expected = Date.parse('2026-11-14T09:30:00Z') + (0.50-0.49)/(0.545-0.49)*1800000;
   assert.ok(Math.abs(lastForecast.model.median.time-expected) < 1);
-  assert.equal(history.at(-1).anchor, Date.parse('2026-11-14T01:00:00Z'));
   assert.ok(history.at(-1).model.median.time < history.at(-1).at);
-  assert.ok(history.at(-1).model.median.time > history.at(-1).anchor);
+  assert.ok(history.at(-1).model.median.time > Date.parse('2026-11-14T01:00:00Z'));
   assert.equal(archive.settlement.earliest, Date.parse('2026-11-14T01:00:00Z'));
   assert.equal(archive.settlement.latest, Date.parse('2026-11-14T01:30:00Z'));
 });
 
-test('reaction uses only already-published NO settlements and never pins the estimate to truth', () => {
-  const archive = { markets, reference:{at:start}, frames:[{at:start,quotes:[[0,.9,.95],[1,.95,.98]]}],
-    noSettlements:[{t:start-7200000,knownAt:start-60000},{t:start-60000,knownAt:start+60000}] };
-  const result = historyModels(archive)[0];
-  assert.equal(result.anchor,start-7200000);
-  assert.ok(result.model.median.time < start);
-  assert.deepEqual(historyModels({...archive,reference:{at:start-300000}})[0].model,result.model);
-  assert.ok(historyModels({...archive,noSettlements:[archive.noSettlements[1]]})[0].model.error);
+test('reopening is a presentation label: moving it cannot change any estimate', async () => {
+  const archive = JSON.parse(await readFile(new URL('../data/history.json',import.meta.url)));
+  const original=historyModels(archive);
+  const relabeled=historyModels({...archive,reference:{at:archive.start-60000}});
+  assert.deepEqual(original.map(p=>p.model),relabeled.map(p=>p.model));
+});
+
+test('settlements enter at their recorded timestamp, for NO and YES alike', () => {
+  const archive={markets:markets.map((m,i)=>({...m,close:start+30000,result:i===0?'no':'yes',settledAt:start+60000})),reference:{at:start},frames:[
+    {at:start,quotes:[[0,.1,.2],[1,.6,.7],[2,.8,.9]]},
+    {at:start+30000,quotes:[]},
+    {at:start+60000,quotes:[]},
+  ]};
+  const history=historyModels(archive);
+  assert.equal(history[0].model.settlementCount,0);
+  assert.ok(history[1].model.error);
+  assert.deepEqual(history[2].model.points.map(p=>p.p),[0,1,1]);
+  assert.equal(history[2].model.settlementCount,3);
+  assert.deepEqual(snapshotAt(archive,archive.frames[2]).event.markets.map(m=>m.result),['no','yes','yes']);
+  const future=structuredClone(archive); future.markets.forEach(m=>m.settledAt+=60000);
+  assert.deepEqual(historyModels(future)[0].model,history[0].model);
+  assert.ok(historyModels(future)[2].model.error);
+});
+
+test('stale quotes stay visible but do not enter the fit, and future quotes cannot leak back', () => {
+  const archive={markets,reference:{at:start},frames:[
+    {at:start,quotes:[[0,.1,.2],[1,.6,.7],[2,.8,.9]]},
+    {at:start+60000,quotes:[[1,.7,.8]]},
+    {at:start+120000,quotes:[[0,.4,.5]]},
+  ]};
+  const model=historyModels(archive)[1].model;
+  assert.equal(model.quoteCount,1); assert.equal(model.rows[0].stale,true);
+  assert.equal(model.rows[0].quotedAt,start); assert.equal(model.rows[0].bid,.1);
+  assert.equal(model.rows[0].fitted,undefined);
+  assert.deepEqual(analyze(snapshotAt(archive,archive.frames[1])),model);
+});
+
+test('post-close candle placeholders do not overwrite the last trading quote', () => {
+  const archive={markets:[{...markets[0],close:start+60000}],reference:{at:start},frames:[
+    {at:start,quotes:[[0,.1,.2]]}, {at:start+60000,quotes:[[0,.01,.02]]},
+    {at:start+120000,quotes:[[0,0,0]]},
+  ]};
+  const last=historyModels(archive).at(-1).model.rows[0];
+  assert.equal(last.bid,.01); assert.equal(last.quotedAt,start+60000); assert.equal(last.stale,true);
+  assert.equal(last.result,''); assert.equal(last.fitted,undefined);
 });

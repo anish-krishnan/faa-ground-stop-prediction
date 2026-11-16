@@ -80,7 +80,7 @@ function renderMedian(result) {
   const value = format(result.time);
   $('median').classList.toggle('word', Boolean(result.edge));
   // Only local formatter output enters this markup. API text is never inserted unescaped.
-  $('median').innerHTML = (result.edge ? 'After ' : '') + escape(value).replace(/ (AM|PM)$/, '<span class="period">$1</span>');
+  $('median').innerHTML = (result.edge === 'after' ? 'After ' : result.edge === 'before' ? 'Before ' : '') + escape(value).replace(/ (AM|PM)$/, '<span class="period">$1</span>');
   $('medianDate').textContent = date(result.time);
 }
 
@@ -97,20 +97,20 @@ function renderMathExample(model) {
 }
 
 function renderRows(model) {
-  const fetchedAt = Date.parse(state.snapshot.fetchedAt);
   $('rows').innerHTML = model.rows.map(row => {
-    const status = row.result ? `Settled ${row.result.toUpperCase()}` : row.t <= fetchedAt ? 'Past cutoff' : row.issue || row.status || 'Unknown';
-    return `<tr><td>${escape(date(row.t))}</td><td>${percent(row.bid)}</td><td>${percent(row.ask)}</td><td>${percent(row.raw)}</td><td>${percent(row.fitted)}</td><td>${escape(status)}</td></tr>`;
+    const status = row.result ? `Settled ${row.result.toUpperCase()}` : row.status === 'closed' ? 'Closed · awaiting settlement' : row.stale ? 'Stale quote · excluded' : row.issue || row.status || 'Unknown';
+    const quoteTime = row.quotedAt === null ? '—' : `${format(row.quotedAt)}${row.stale ? ' · stale' : ''}`;
+    return `<tr><td>${escape(date(row.t))}</td><td>${percent(row.bid)}</td><td>${percent(row.ask)}</td><td>${percent(row.raw)}</td><td>${percent(row.fitted)}</td><td>${escape(quoteTime)}</td><td>${escape(status)}</td></tr>`;
   }).join('');
   const volume = model.rows.reduce((total, row) => total + row.volume, 0);
   $('volume').textContent = `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(volume)} contracts traded`;
-  if (archive) $('volume').textContent = `Quotes at ${format(history[selected].at)}`;
+  if (archive) $('volume').textContent = `As of ${format(history[selected].at)}`;
 }
 
 function renderUnavailable(model) {
   $('median').textContent = model.settled ? 'Announced' : 'Unavailable';
   $('median').classList.add('word');
-  $('medianDate').textContent = model.settled ? 'Qualifying outcome confirmed by Kalshi' : 'Insufficient usable future quotes';
+  $('medianDate').textContent = model.settled ? 'Qualifying outcome confirmed by Kalshi' : 'No usable quotes or known settlements';
   $('range').textContent = model.settled ? (model.earliest ? `${date(model.earliest)} – ` : 'Before ') + date(model.latest) : '—';
   $('rangeLabel').textContent = model.settled ? 'SETTLEMENT-IMPLIED WINDOW' : 'FORECAST UNAVAILABLE';
   $('rangeSub').textContent = model.settled ? 'Latest NO cutoff to earliest YES cutoff' : 'Awaiting usable market data';
@@ -139,7 +139,7 @@ function renderArchiveHero() {
 
 function render(redrawHistory = true) {
   if (!state.snapshot) return;
-  const model = archive ? history[selected].model : analyze(state.snapshot, Date.parse(state.snapshot.fetchedAt));
+  const model = archive ? history[selected].model : analyze(state.snapshot);
   state.model = model;
   if (archive) {
     $('historySection').hidden = false;
@@ -153,14 +153,14 @@ function render(redrawHistory = true) {
   }
   const notices = [];
   if (state.error) notices.push(`Showing a stale snapshot: ${state.error}.`);
-  if (model.settled) notices.push('Kalshi has settled at least one deadline YES. The window below is established by settled contracts, not an exact FAA timestamp.');
+  if (model.settled && !archive) notices.push('Kalshi has settled at least one deadline YES. The window below is established by settled contracts, not an exact FAA timestamp.');
   if (model.error) notices.push(model.error);
   // The adjacent tooltip explains archive gaps without shifting the page under the pointer.
   if (archive && model.error) notices.splice(0, notices.length);
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
-  if (model.settled || model.error) {
+  if ((model.settled && !archive) || model.error) {
     renderUnavailable(model);
     renderArchiveHero();
     renderStatus();
@@ -171,17 +171,17 @@ function render(redrawHistory = true) {
   const high = quantile(model.points, (1 + coverage) / 2);
   renderMedian(model.median);
   const wait = (model.median.time - Date.parse(state.snapshot.fetchedAt)) / HOUR;
-  $('countdown').textContent = archive ? `As of ${date(history[selected].at)}` : `${model.median.edge ? 'More than' : 'In about'} ${wait.toFixed(1)} hours`;
+  $('countdown').textContent = archive ? `As of ${date(history[selected].at)}` : model.median.edge ? percentileLabel(model.median) : wait >= 0 ? `In about ${wait.toFixed(1)} hours` : `Approximately ${Math.abs(wait).toFixed(1)} hours ago`;
   $('rangeLabel').textContent = `${Math.round(coverage * 100)}% market-implied range`;
   $('range').textContent = `${percentileLabel(low)} – ${percentileLabel(high)}`;
   $('rangeSub').textContent = high.edge === 'after' ? 'Upper endpoint exceeds the listed deadlines.' : '';
   $('tail').textContent = percent(model.tail);
   $('tailDate').textContent = `Announcement after ${date(model.last)}`;
-  const mean = model.restricted + model.tail * Number($('tailHours').value) * HOUR;
+  const mean = model.restricted === null ? null : model.restricted + model.tail * Number($('tailHours').value) * HOUR;
   $('mean').textContent = format(mean);
-  $('meanDate').textContent = `${date(mean)} · assumed tail: +${$('tailHours').value}h`;
+  $('meanDate').textContent = mean === null ? 'Unavailable: lower tail is unbounded' : `${date(mean)} · assumed tail: +${$('tailHours').value}h`;
   $('quoteRange').textContent = `${percentileLabel(model.quoteEarly)} – ${percentileLabel(model.quoteLate)}`;
-  $('quality').textContent = `${model.points.length - 1} usable contracts · ${model.excluded} excluded · max fit adjustment ${(100 * model.adjustment).toFixed(1)} pp`;
+  $('quality').textContent = `${model.quoteCount} quotes · ${model.settlementCount} settled · ${model.excluded} excluded · max fit adjustment ${(100 * model.adjustment).toFixed(1)} pp`;
   drawChart(model, low, high, date, format);
   renderMathExample(model);
   renderArchiveHero();
@@ -214,7 +214,7 @@ async function initialize() {
     const response = await fetch('/history.json', { signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('History unavailable');
     const data = await response.json();
-    if (data.version !== 1 || data.eventTicker !== 'KXFAAGROUNDSTOPLIFT-13NOV26' || !data.frames?.length) throw new Error('Invalid history');
+    if (data.version !== 2 || data.eventTicker !== 'KXFAAGROUNDSTOPLIFT-13NOV26' || !data.frames?.length) throw new Error('Invalid history');
     const models = historyModels(data);
     const lastUsable = models.findLastIndex(p => !p.model.error);
     if (lastUsable < 0) throw new Error('No historical estimates');

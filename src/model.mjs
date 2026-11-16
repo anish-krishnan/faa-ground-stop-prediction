@@ -73,54 +73,65 @@ function quoteRow(market) {
     raw: issue ? null : (bid + ask) / 2,
     result: market.result || '',
     status: market.status,
+    quotedAt: market.quotedAt ?? null,
+    stale: Boolean(market.quoteStale),
     volume: Number(market.volume_fp ?? market.volume ?? 0),
     issue,
     last: price(market, 'last_price'),
   };
 }
 
-export function analyze(data, now = Date.now()) {
+export function analyze(data) {
   const markets = data.event?.markets?.length ? data.event.markets : data.markets || [];
   const rows = markets.map(quoteRow).filter(row => Number.isFinite(row.t)).sort((a, b) => a.t - b.t);
   const yes = rows.filter(row => row.result === 'yes');
   const no = rows.filter(row => row.result === 'no');
-  if (yes.length) {
-    return {
-      rows, settled: true, points: [],
-      earliest: no.filter(row => row.t < yes[0].t).at(-1)?.t ?? null,
-      latest: yes[0].t,
-    };
+  const earliest = no.at(-1)?.t ?? null;
+  const latest = yes[0]?.t ?? null;
+  const outcome = { settled: yes.length > 0, earliest, latest };
+  if (earliest !== null && latest !== null && earliest >= latest) {
+    return { rows, points: [], ...outcome, error: 'Conflicting settlement outcomes.' };
   }
-  const usable = rows.filter(row => row.t > now && row.raw !== null && !row.result && ['active', 'open'].includes(row.status));
-  if (usable.length < 2) {
-    return { rows, points: [], error: 'Not enough future deadlines with two-sided quotes. The event may be closed or awaiting settlement.' };
+  const usable = rows.filter(row => row.raw !== null && !row.result && !row.stale && ['active', 'open'].includes(row.status));
+  const settlements = rows.filter(row => ['yes', 'no'].includes(row.result));
+  if (!usable.length && !settlements.length) {
+    return { rows, points: [], ...outcome, error: 'No usable two-sided quotes or known settlements at this minute.' };
   }
-  const weights = usable.map(row => 1 / Math.max(0.02, row.ask - row.bid) ** 2);
-  const fitted = isotonic(usable.map(row => row.raw), weights);
-  const low = isotonic(usable.map(row => row.bid), weights);
-  const high = isotonic(usable.map(row => row.ask), weights);
-  // Conditional on the qualifying announcement not having occurred at snapshot time.
-  const points = [
-    { t: now, p: 0, low: 0, high: 0 },
-    ...usable.map((row, index) => ({ t: row.t, p: fitted[index], low: low[index], high: high[index] })),
-  ];
-  usable.forEach((row, index) => { row.fitted = fitted[index]; });
-  // E[min(T,L)] = now + integral(now..L) of (1 - F(t)); units are epoch milliseconds.
-  let restricted = now;
+  // Settlements are hard constraints, not heavily weighted quotes. Monotonicity
+  // forces all deadlines at/before a known NO to zero, and at/after a known YES to one.
+  const fixed = row => row.result === 'no' || (earliest !== null && row.t <= earliest) ? 0
+    : row.result === 'yes' || (latest !== null && row.t >= latest) ? 1 : null;
+  const free = usable.filter(row => fixed(row) === null);
+  const weights = free.map(row => 1 / Math.max(0.02, row.ask - row.bid) ** 2);
+  const fitted = isotonic(free.map(row => row.raw), weights);
+  const low = isotonic(free.map(row => row.bid), weights);
+  const high = isotonic(free.map(row => row.ask), weights);
+  const estimates = new Map(free.map((row, i) => [row, { p: fitted[i], low: low[i], high: high[i] }]));
+  const points = [...usable, ...settlements].sort((a, b) => a.t - b.t).map(row => {
+    const value = fixed(row);
+    const fit = value === null ? estimates.get(row) : { p: value, low: value, high: value };
+    row.fitted = fit.p;
+    return { t: row.t, ...fit, result: row.result };
+  });
+  // A finite mean needs a supported zero-probability lower boundary. Otherwise
+  // the unknown left tail makes even a restricted mean unidentified.
+  let restricted = points[0].p === 0 ? points[0].t : null;
   for (let index = 1; index < points.length; index++) {
     const left = points[index - 1];
     const right = points[index];
-    restricted += (right.t - left.t) * (1 - (left.p + right.p) / 2);
+    if (restricted !== null) restricted += (right.t - left.t) * (1 - (left.p + right.p) / 2);
   }
   return {
-    rows, points,
+    rows, points, ...outcome,
+    quoteCount: usable.length,
+    settlementCount: settlements.length,
     median: quantile(points, 0.5),
     quoteEarly: quantile(points, 0.5, 'high'),
     quoteLate: quantile(points, 0.5, 'low'),
     tail: 1 - points.at(-1).p,
     last: points.at(-1).t,
     restricted,
-    adjustment: Math.max(...usable.map((row, index) => Math.abs(row.raw - fitted[index]))),
-    excluded: rows.filter(row => row.t > now && row.issue).length,
+    adjustment: Math.max(0, ...usable.map(row => Math.abs(row.raw - row.fitted))),
+    excluded: rows.length - usable.length - settlements.length,
   };
 }

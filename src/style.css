@@ -12,3 +12,5 @@ dialog{border:1px solid #d8e2d8;background:#fcfcf9;border-radius:18px;max-width:
 .tooltip-comparison{font-size:11px;line-height:1.6;color:#2f855c;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}@media(max-width:700px){.tooltip-comparison{grid-column:1/-1;margin-top:12px}}
 
 .legend{flex-wrap:wrap}.legend .reaction{height:0;border-top:2px dashed var(--orange);background:none}
+
+.legend .settled{width:6px;height:6px;background:#2f855c}
