@@ -14,3 +14,5 @@ dialog{border:1px solid #d8e2d8;background:#fcfcf9;border-radius:18px;max-width:
 .legend{flex-wrap:wrap}.legend .reaction{height:0;border-top:2px dashed var(--orange);background:none}
 
 .legend .settled{width:6px;height:6px;background:#2f855c}
+
+.chart-caption{font-size:11px;line-height:1.7;color:var(--muted);margin:12px 0 8px;max-width:650px}.raw-card{margin-top:30px;padding-top:24px;border-top:1px solid var(--line)}.legend .raw{background:#527b91}.legend .decrease{background:#b85450}.legend .whisker{width:7px;height:12px;border-top:1px solid #527b91;border-bottom:1px solid #527b91;background:linear-gradient(to right,transparent 3px,#527b91 3px,#527b91 4px,transparent 4px)}.chart:focus-visible{outline:2px solid var(--orange);outline-offset:4px;border-radius:4px}

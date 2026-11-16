@@ -120,6 +120,14 @@ function renderUnavailable(model) {
   $('countdown').textContent = '';
   $('chart').innerHTML = `<div class="empty">${model.settled ? 'The market has resolved. See deadline outcomes below.' : 'Not enough quotes to draw a probability curve.'}</div>`;
   $('chart').onpointermove = null;
+  $('chart').onpointerdown = null;
+  $('chart').onkeydown = null;
+  $('rawChart').innerHTML = '<div class="empty">No usable raw quote curve for this snapshot.</div>';
+  $('rawChart').onpointermove = null;
+  $('rawChart').onpointerdown = null;
+  $('rawChart').onkeydown = null;
+  $('rawHover').textContent = '';
+  $('rawQuality').textContent = '';
   $('quality').textContent = 'Forward curve unavailable';
   $('hover').textContent = '';
   $('mathExample').textContent = 'A forward worked example is unavailable for this snapshot.';
@@ -160,6 +168,7 @@ function render(redrawHistory = true) {
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
+  for (const id of ['cdfSnapshot', 'rawSnapshot']) $(id).textContent = `As of ${date(Date.parse(state.snapshot.fetchedAt))}`;
   if ((model.settled && !archive) || model.error) {
     renderUnavailable(model);
     renderArchiveHero();
@@ -183,6 +192,7 @@ function render(redrawHistory = true) {
   $('quoteRange').textContent = `${percentileLabel(model.quoteEarly)} – ${percentileLabel(model.quoteLate)}`;
   $('quality').textContent = `${model.quoteCount} quotes · ${model.settlementCount} settled · ${model.excluded} excluded · max fit adjustment ${(100 * model.adjustment).toFixed(1)} pp`;
   drawChart(model, low, high, date, format);
+  drawChart(model, low, high, date, format, true);
   renderMathExample(model);
   renderArchiveHero();
   renderStatus();

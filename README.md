@@ -1,6 +1,6 @@
 # FAA Ground Stop Prediction
 
-A read-only dashboard for the FAA lifting-announcement market `KXFAAGROUNDSTOPLIFT-13NOV26`. Large median ETA, selectable market-implied ranges, quote-spread bands, and an accessible math explainer with a live worked example. The settled-event homepage replays historical estimates with a timeline, the selected minute’s probability curve, and its underlying quotes. Mean and tail controls live inside the explainer.
+A read-only dashboard for the FAA lifting-announcement market `KXFAAGROUNDSTOPLIFT-13NOV26`. Large median ETA, selectable market-implied ranges, quote-spread bands, and an accessible math explainer with a live worked example. The settled-event homepage replays historical estimates with a timeline, the selected minute’s probability curve, a raw midpoint comparison curve, and its underlying quotes. Mean and tail controls live inside the explainer.
 
 Live: https://faa-ground-stop-prediction.vercel.app
 
@@ -44,7 +44,7 @@ The API cache and last-success fallback are per warm serverless instance, not du
 
 ## Historical archive
 
-`data/history.json` contains minute-end closing bid/ask quotes, contract opening/closing times, and outcomes with their recorded settlement timestamps, not precomputed forecasts (schema version 2). `src/history.mjs` reuses the live model to reconstruct each minute. Hovering selects a snapshot and instantly updates the adjacent forecast tooltip, probability curve, and table. Keyboard arrows and touch also work. The headline remains “Announced,” and the default range is 50%. Range and timezone settings apply to both charts. A settlement may enter an estimate only when its recorded publication time is at or before that snapshot. Later outcomes and present-day quotes do not enter earlier estimates.
+`data/history.json` contains minute-end closing bid/ask quotes, contract opening/closing times, and outcomes with their recorded settlement timestamps, not precomputed forecasts (schema version 2). `src/history.mjs` reuses the live model to reconstruct each minute. Hovering selects a snapshot and instantly updates the adjacent forecast tooltip, probability curve, and table. Keyboard arrows and touch also work. The headline remains “Announced,” and the default range is 50%. Range and timezone settings apply to the relevant charts. The fitted CDF and raw market curve share identical axes and eligible inputs. The raw panel preserves unadjusted quote midpoints, marks downward segments in red, and shows individual bid/ask whiskers when enabled. Already-known settlements appear as green squares in both panels; stale and excluded quotes remain in the table only. Hover, touch, and keyboard inspection compare each raw midpoint with its fitted value. A raw curve with decreases is not a valid CDF, so no raw median or percentile range is calculated. A settlement may enter an estimate only when its recorded publication time is at or before that snapshot. Later outcomes and present-day quotes do not enter earlier estimates.
 
 - Observation window: November 13, 2026, 21:50 UTC through November 14, 01:25 UTC.
 - 216 minute slots; 208 have usable quotes or already-known settlements. Missing minutes remain gaps.

@@ -23,11 +23,22 @@
   <p class="history-hint">Hover to explore · ← → keys</p>
   <div class="history-foot"><span id="historyBoundary">Pre-reopening forecasts only</span><a id="referenceLink" target="_blank" rel="noopener"></a></div>
 </section>
-<section class="chart-card" aria-labelledby="chartTitle"><div class="section-top"><h2 id="chartTitle">Probability by deadline</h2><label class="check"><input id="band" type="checkbox" checked> Bid / ask</label></div>
+<section class="chart-card" aria-labelledby="chartTitle"><div class="section-top"><h2 id="chartTitle">Market-implied CDF</h2><label class="check"><input id="band" type="checkbox" aria-controls="chart rawChart" checked> Bid / ask</label></div>
+  <p class="chart-caption">Probability of an announcement before each deadline, fitted to never decrease.</p>
+  <p id="cdfSnapshot" class="fine"></p>
   <div class="legend"><span><i class="orange"></i> Fitted</span><span><i class="dot"></i> Midpoint</span><span><i class="settled"></i> Settled</span><span><i class="tint"></i> Selected range</span></div>
-  <div id="chart" class="chart" aria-label="Cumulative announcement probability chart"><div class="empty">Loading…</div></div>
+  <div id="chart" class="chart" tabindex="0" role="group" aria-describedby="hover" aria-label="Fitted CDF. Hover, tap, or use arrow keys to inspect a deadline."><div class="empty">Loading…</div></div>
   <p id="hover" class="chart-note"></p>
   <div class="chart-bottom"><span id="quality"></span></div>
+</section>
+<section class="chart-card raw-card" aria-labelledby="rawTitle">
+  <div class="section-top"><h2 id="rawTitle">Raw market curve</h2><span class="fine">Before fitting</span></div>
+  <p class="chart-caption">Unadjusted quote midpoints, with known settlements. Downward steps violate a valid CDF.</p>
+  <p id="rawSnapshot" class="fine"></p>
+  <div class="legend"><span><i class="raw"></i> Raw midpoint</span><span><i class="decrease"></i> Downward step</span><span><i class="whisker"></i> Bid / ask</span><span><i class="settled"></i> Settled</span></div>
+  <div id="rawChart" class="chart" tabindex="0" role="group" aria-describedby="rawHover" aria-label="Raw market probabilities. Hover, tap, or use arrow keys to compare with the fitted CDF."><div class="empty">Loading…</div></div>
+  <p id="rawHover" class="chart-note"></p>
+  <div class="chart-bottom"><span id="rawQuality"></span></div>
 </section>
 <section class="contracts" aria-labelledby="marketTitle"><div class="section-top"><h2 id="marketTitle">Market data</h2><span id="volume" class="fine"></span></div><div class="table-scroll"><table><thead><tr><th>Announcement before</th><th>YES bid</th><th>YES ask</th><th>Midpoint</th><th>Fitted</th><th>Quote as of</th><th>Status</th></tr></thead><tbody id="rows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></section>
 <dialog id="mathDialog" aria-labelledby="mathTitle"><div class="dialog-top"><div><h2 id="mathTitle">How was this computed?</h2></div><button id="closeMath" class="close-button" aria-label="Close explanation">×</button></div>

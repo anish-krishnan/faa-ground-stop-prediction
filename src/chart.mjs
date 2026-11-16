@@ -4,9 +4,16 @@ const escape = text => String(text).replace(/[&<>"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
 }[character]));
 
-export function drawChart(model, low, high, formatDate, formatTime) {
-  const width = Math.max(280, $('chart').clientWidth);
-  const height = Math.max(220, $('chart').clientHeight);
+export function drawChart(model, low, high, formatDate, formatTime, raw = false) {
+  const container = $(raw ? 'rawChart' : 'chart');
+  const detail = $(raw ? 'rawHover' : 'hover');
+  const width = Math.max(280, container.clientWidth);
+  const height = Math.max(220, container.clientHeight);
+  // Both panels use the same eligible inputs and axes. Only the quote values
+  // change: unadjusted midpoints below, isotonic probabilities above.
+  const rows = model.rows.filter(row => row.fitted != null);
+  const points = rows.map(row => ({ t: row.t, p: row.result ? row.fitted : row.raw }));
+  const color = raw ? '#527b91' : '#df7136';
   const left = 48, right = 22, top = 15, bottom = 42;
   const single = model.points.length === 1;
   const firstTime = model.points[0].t - (single ? 900000 : 0);
@@ -18,29 +25,39 @@ export function drawChart(model, low, high, formatDate, formatTime) {
   ).join(' ');
 
   const svg = [
-    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Cumulative probability by announcement deadline">`,
-    ...(!low.edge && !high.edge ? [`<rect x="${x(low.time)}" y="${top}" width="${Math.max(0, x(high.time) - x(low.time))}" height="${height - top - bottom}" fill="#eaf0eb"/>`] : []),
+    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${raw ? 'Raw quote midpoints by announcement deadline, before monotonic fitting' : 'Fitted cumulative probability by announcement deadline'}">`,
+    ...(!raw && !low.edge && !high.edge ? [`<rect x="${x(low.time)}" y="${top}" width="${Math.max(0, x(high.time) - x(low.time))}" height="${height - top - bottom}" fill="#eaf0eb"/>`] : []),
   ];
   for (let p = 0; p <= 1; p += 0.25) {
     svg.push(`<line x1="${left}" y1="${y(p)}" x2="${width - right}" y2="${y(p)}" stroke="#e5eae5" stroke-dasharray="${p === 0.5 ? '4 4' : '0'}"/>`);
     svg.push(`<text x="${left - 12}" y="${y(p) + 4}" text-anchor="end" fill="#819088" font-size="10">${p * 100}%</text>`);
   }
-  if ($('band').checked) {
+  if (!raw && $('band').checked) {
     const lowerEdge = model.points.slice().reverse().map(point => `L${x(point.t)},${y(point.low)}`).join(' ');
     svg.push(`<path d="${path(model.points, 'high')} ${lowerEdge} Z" fill="#e46d32" fill-opacity=".14"/>`);
   }
-  svg.push(`<path d="${path(model.points, 'p')}" stroke="#df7136" stroke-width="2.7" fill="none"/>`);
-  const quotedRows = model.rows.filter(row => row.fitted != null && !row.result);
+  svg.push(`<path d="${path(raw ? points : model.points, 'p')}" stroke="${color}" stroke-width="2.7" fill="none"/>`);
+  const drops = points.slice(1).flatMap((point, i) => point.p < points[i].p - 1e-12 ? [[points[i], point]] : []);
+  if (raw) {
+    for (const pair of drops) svg.push(`<path d="${path(pair, 'p')}" stroke="#b85450" stroke-width="3" fill="none"/>`);
+    const largest = Math.max(0, ...drops.map(([a,b]) => a.p-b.p));
+    $('rawQuality').textContent = drops.length ? `${drops.length} downward ${drops.length === 1 ? 'step' : 'steps'} · largest drop ${(largest*100).toFixed(1)} pp` : 'No downward steps in this snapshot';
+  }
+  const quotedRows = rows.filter(row => !row.result);
   for (const row of quotedRows) {
-    svg.push(`<circle cx="${x(row.t)}" cy="${y(row.raw)}" r="3" stroke="#df7136" fill="white"><title>${escape(formatDate(row.t))} · midpoint ${percent(row.raw)} · bid ${percent(row.bid)} / ask ${percent(row.ask)}</title></circle>`);
+    if (raw && $('band').checked) {
+      svg.push(`<path d="M${x(row.t)},${y(row.bid)} V${y(row.ask)} M${x(row.t)-3},${y(row.bid)} h6 M${x(row.t)-3},${y(row.ask)} h6" stroke="${color}" stroke-opacity=".35" fill="none"/>`);
+    }
+    svg.push(`<circle cx="${x(row.t)}" cy="${y(row.raw)}" r="3" stroke="${color}" fill="white"><title>${escape(formatDate(row.t))} · midpoint ${percent(row.raw)} · bid ${percent(row.bid)} / ask ${percent(row.ask)}</title></circle>`);
   }
   for (const point of model.points.filter(point => point.result)) {
     svg.push(`<rect x="${x(point.t)-3}" y="${y(point.p)-3}" width="6" height="6" fill="#2f855c"><title>${escape(formatDate(point.t))} · settled ${point.result.toUpperCase()} · ${percent(point.p)}</title></rect>`);
   }
-  if (!model.median.edge) {
+  if (!raw && !model.median.edge) {
     svg.push(`<line x1="${x(model.median.time)}" x2="${x(model.median.time)}" y1="${y(0.5)}" y2="${y(0)}" stroke="#75877c" stroke-dasharray="3 4"/>`);
     svg.push(`<circle cx="${x(model.median.time)}" cy="${y(0.5)}" r="5" fill="#20352f" stroke="white" stroke-width="2"/>`);
   }
+  svg.push('<line data-deadline-cursor visibility="hidden" stroke="#88988d" stroke-dasharray="2 4"/>');
   const labelCount = width < 550 ? 3 : 5;
   for (let index = 0; index < labelCount; index++) {
     const time = firstTime + (finalTime - firstTime) * index / (labelCount - 1);
@@ -49,15 +66,33 @@ export function drawChart(model, low, high, formatDate, formatTime) {
     svg.push(`<text x="${x(time)}" y="${height - 22}" text-anchor="${anchor}" fill="#819088" font-size="10"><tspan x="${x(time)}">${escape(formatTime(time))}</tspan><tspan x="${x(time)}" dy="13">${escape(calendarDate)}</tspan></text>`);
   }
   svg.push('</svg>');
-  $('chart').innerHTML = svg.join('');
-  $('chart').onpointermove = event => {
-    const rect = $('chart').querySelector('svg').getBoundingClientRect();
+  container.innerHTML = svg.join('');
+  detail.textContent = 'Hover or use ← → to compare a deadline.';
+  let selected = -1;
+  function inspect(index) {
+    selected = index;
+    const row = rows[index];
+    const cursor = container.querySelector('[data-deadline-cursor]');
+    cursor.setAttribute('visibility', 'visible');
+    cursor.setAttribute('x1', x(row.t)); cursor.setAttribute('x2', x(row.t));
+    cursor.setAttribute('y1', top); cursor.setAttribute('y2', height-bottom);
+    const adjustment = (row.fitted-row.raw)*100;
+    detail.textContent = row.result ? `${formatDate(row.t)} · Settled ${row.result.toUpperCase()} · ${percent(row.fitted)} (known at this snapshot)` : `${formatDate(row.t)} · Raw ${percent(row.raw)} → fitted ${percent(row.fitted)} · adjustment ${adjustment >= 0 ? '+' : ''}${adjustment.toFixed(1)} pp · YES bid / ask ${percent(row.bid)} / ${percent(row.ask)}`;
+  }
+  container.onpointermove = event => {
+    const rect = container.querySelector('svg').getBoundingClientRect();
     // Default preserveAspectRatio centers the viewBox; account for letterboxing.
     const scale = Math.min(rect.width / width, rect.height / height);
     const offset = (rect.width - width * scale) / 2;
     const position = (event.clientX - rect.left - offset) / scale;
     const time = firstTime + (position - left) / (width - left - right) * (finalTime - firstTime);
-    const row = model.rows.filter(row => row.fitted != null).reduce((previous, current) => Math.abs(current.t - time) < Math.abs(previous.t - time) ? current : previous);
-    $('hover').textContent = row.result ? `${formatDate(row.t)} · Settled ${row.result.toUpperCase()} · ${percent(row.fitted)}` : `${formatDate(row.t)} · Fitted ${percent(row.fitted)} · Raw midpoint ${percent(row.raw)} · YES bid / ask ${percent(row.bid)} / ${percent(row.ask)}`;
+    inspect(rows.reduce((best, row, i) => Math.abs(row.t-time) < Math.abs(rows[best].t-time) ? i : best, 0));
+  };
+  container.onpointerdown = container.onpointermove;
+  container.onkeydown = event => {
+    const keys = { ArrowLeft: selected-1, ArrowRight: selected+1, Home: 0, End: rows.length-1 };
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    inspect(Math.max(0, Math.min(rows.length-1, keys[event.key])));
   };
 }
