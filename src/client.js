@@ -147,7 +147,7 @@ function renderArchiveHero() {
   $('countdown').textContent = '';
   $('rangeLabel').textContent = 'Kalshi settlement window';
   $('range').textContent = `${date(archive.settlement.earliest)} – before ${date(archive.settlement.latest)}`;
-  $('rangeSub').textContent = `${format(archive.settlement.earliest)} deadline: NO · ${format(archive.settlement.latest)} deadline: YES`;
+  $('rangeSub').textContent = '';
 }
 
 function render(redrawHistory = true) {
