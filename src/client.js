@@ -143,11 +143,11 @@ function renderArchiveHero() {
   $('etaKicker').textContent = '';
   $('median').textContent = 'Announced';
   $('median').classList.add('word');
-  $('medianDate').textContent = '';
+  $('medianDate').textContent = `Reported lift · ${date(archive.reference.at)}`;
   $('countdown').textContent = '';
-  $('rangeLabel').textContent = 'Announcement window';
+  $('rangeLabel').textContent = 'Kalshi settlement window';
   $('range').textContent = `${date(archive.settlement.earliest)} – before ${date(archive.settlement.latest)}`;
-  $('rangeSub').textContent = '';
+  $('rangeSub').textContent = `${format(archive.settlement.earliest)} deadline: NO · ${format(archive.settlement.latest)} deadline: YES`;
 }
 
 function render(redrawHistory = true) {
@@ -157,7 +157,6 @@ function render(redrawHistory = true) {
   if (archive) {
     $('historySection').hidden = false;
     $('heroTitle').textContent = 'FAA ground stop';
-    $('brandMode').textContent = ' / ARCHIVE';
     $('referenceLink').textContent = `Airspace reopened · ${date(archive.reference.at)} ↗`;
     $('referenceLink').href = archive.reference.url;
     $('historyRangeLegend').textContent = `${Number($('coverage').value)*100}% range`;
