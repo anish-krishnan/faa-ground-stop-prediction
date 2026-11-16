@@ -141,10 +141,10 @@ function renderUnavailable(model) {
 
 function renderArchiveHero() {
   if (!archive) return;
-  $('etaKicker').textContent = 'Nationwide ground stop';
+  $('etaKicker').textContent = '';
   $('median').textContent = 'Announced';
   $('median').classList.add('word');
-  $('medianDate').textContent = 'Qualifying outcome confirmed by Kalshi';
+  $('medianDate').textContent = '';
   $('countdown').textContent = '';
   $('rangeLabel').textContent = 'Announcement window';
   $('range').textContent = `${date(archive.settlement.earliest)} – before ${date(archive.settlement.latest)}`;
@@ -153,19 +153,15 @@ function renderArchiveHero() {
 
 function render(redrawHistory = true) {
   if (!state.snapshot) return;
-  $('densityCaption').textContent = $('densityScale').value === 'sqrt'
-    ? 'Square-root scale reveals smaller densities. Use Linear to read area as probability.'
-    : 'Area over an interval is its probability. Taller sections concentrate more probability per hour.';
   const model = archive ? history[selected].model : analyze(state.snapshot);
   state.model = model;
   if (archive) {
     $('historySection').hidden = false;
-    $('heroTitle').textContent = 'FAA ground stop · resolved';
+    $('heroTitle').textContent = 'FAA ground stop';
     $('brandMode').textContent = ' / ARCHIVE';
     $('referenceLink').textContent = `Airspace reopened · ${date(archive.reference.at)} ↗`;
     $('referenceLink').href = archive.reference.url;
     $('historyRangeLegend').textContent = `${Number($('coverage').value)*100}% range`;
-    $('historyBoundary').textContent = `Market reaction shown through ${format(archive.frames.at(-1).at)}`;
     if (redrawHistory) drawHistory($('historyChart'), $('historyDetails'), history, archive, selected, Number($('coverage').value), format, index => selectHistory(index, false));
   }
   const notices = [];
@@ -177,7 +173,7 @@ function render(redrawHistory = true) {
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
-  for (const id of ['cdfSnapshot', 'rawSnapshot', 'densitySnapshot', 'rawDensitySnapshot']) $(id).textContent = `As of ${date(Date.parse(state.snapshot.fetchedAt))}`;
+  $('distributionSnapshot').textContent = `As of ${date(Date.parse(state.snapshot.fetchedAt))}`;
   if ((model.settled && !archive) || model.error) {
     renderUnavailable(model);
     renderArchiveHero();
@@ -223,7 +219,7 @@ dialog.addEventListener('click', event => {
   const box = dialog.getBoundingClientRect();
   if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
 });
-for (const id of ['timezone', 'coverage', 'tailHours', 'band', 'densityScale']) $(id).addEventListener('change', render);
+for (const id of ['timezone', 'coverage', 'tailHours', 'band']) $(id).addEventListener('change', render);
 function selectHistory(index, redrawHistory = true) {
   selected = index;
   state.snapshot = snapshotAt(archive, archive.frames[index]);

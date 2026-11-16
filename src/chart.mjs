@@ -70,7 +70,7 @@ export function drawChart(model, low, high, formatDate, formatTime, raw = false)
   }
   svg.push('</svg>');
   container.innerHTML = svg.join('');
-  detail.textContent = 'Hover or use ← → to compare a deadline.';
+  detail.textContent = '';
   let selected = -1;
   function inspect(index) {
     selected = index;
@@ -101,7 +101,6 @@ export function drawChart(model, low, high, formatDate, formatTime, raw = false)
 }
 
 export function drawDensity(model, formatDate, formatTime, raw = false) {
-  const compressed = $('densityScale').value === 'sqrt';
   const container = $(raw ? 'rawDensity' : 'density');
   const detail = $(raw ? 'rawDensityHover' : 'densityHover');
   const quality = $(raw ? 'rawDensityQuality' : 'densityQuality');
@@ -123,30 +122,13 @@ export function drawDensity(model, formatDate, formatTime, raw = false) {
   const min = Math.min(0, ...values.filter(v=>Math.abs(v)>1e-12)), max = Math.max(.01, ...values);
   const target = (max-min)/4, magnitude = 10**Math.floor(Math.log10(target));
   const step = [1,2,5,10].find(n => n*magnitude >= target)*magnitude;
-  const lower = compressed ? min*1.12 : Math.floor(min/step)*step;
-  const upper = compressed ? max*1.12 : Math.ceil(max/step)*step;
-  // A signed square root retains zero and negative raw slopes. Labels and
-  // tooltips stay in the original units; no density values are altered.
-  const transform = value => compressed ? Math.sign(value)*Math.sqrt(Math.abs(value)) : value;
-  const y = value => top+(transform(upper)-transform(value))/(transform(upper)-transform(lower))*(height-top-bottom);
+  const lower = Math.floor(min/step)*step, upper = Math.ceil(max/step)*step;
+  const y = value => top+(upper-value)/(upper-lower)*(height-top-bottom);
   const color = raw ? '#527b91' : '#df7136';
   const rate = n => `${(n*100).toFixed(1)}% / h`;
   const svg = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${raw ? 'Raw CDF derivative; negative regions are invalid probability density' : 'Market-implied probability density per hour, derived from the fitted CDF'}">`,
-    `<text x="${left}" y="12" fill="#819088" font-size="9">DENSITY (% / HOUR) · ${compressed ? '√ SCALE' : 'LINEAR'}</text>`];
-  let yTicks;
-  if (compressed) {
-    yTicks = [0];
-    const candidates = [-4,-3,-2,-1,0,1,2].flatMap(exponent=>[1,2,5].map(n=>n*10**exponent));
-    for (const sign of [-1,1]) {
-      let previous = y(0);
-      for (const magnitude of candidates) {
-        const value = sign*magnitude;
-        if (value<lower || value>upper || Math.abs(y(value)-previous)<24) continue;
-        yTicks.push(value); previous = y(value);
-      }
-    }
-    if (min < -1e-12 && !yTicks.some(v=>v<0) && y(min)-y(0)>16) yTicks.push(min);
-  } else yTicks = Array.from({length:Math.round((upper-lower)/step)+1},(_,i)=>lower+i*step);
+    `<text x="${left}" y="12" fill="#819088" font-size="9">DENSITY (% / HOUR)</text>`];
+  const yTicks = Array.from({length:Math.round((upper-lower)/step)+1},(_,i)=>lower+i*step);
   for (const value of yTicks) {
     svg.push(`<line x1="${left}" x2="${width-right}" y1="${y(value)}" y2="${y(value)}" stroke="#e5eae5"/>`);
     svg.push(`<text x="${left-9}" y="${y(value)+4}" text-anchor="end" fill="#819088" font-size="10">${Number((value*100).toFixed(2))}%</text>`);
@@ -169,8 +151,8 @@ export function drawDensity(model, formatDate, formatTime, raw = false) {
   svg.push('</svg>'); container.innerHTML = svg.join('');
   const mass = intervals.reduce((sum,p)=>sum+p.mass,0);
   const negatives = intervals.filter(p=>p.perHour < -1e-12).length;
-  quality.textContent = raw ? `${negatives} negative ${negatives===1?'interval':'intervals'} · net CDF change ${(mass*100).toFixed(1)} pp` : `Probability in range ${percent(mass)} · ${percent(1-mass)} outside`;
-  detail.textContent = 'Hover or use ← → to inspect an interval.';
+  quality.textContent = raw ? `${negatives} negative ${negatives===1?'interval':'intervals'}` : `Probability in range ${percent(mass)} · ${percent(1-mass)} outside`;
+  detail.textContent = '';
   let selected = -1;
   function inspect(index) {
     selected = index;
