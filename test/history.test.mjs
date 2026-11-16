@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { buildFrames, historyModels, snapshotAt } from '../src/history.mjs';
-import { analyze, EVENT, quantile } from '../src/model.mjs';
+import { analyze, EVENT, quantile, densityIntervals } from '../src/model.mjs';
 
 const start = Date.parse('2026-11-13T22:00:00Z');
 const markets = [1800, 1900, 2000].map(hour => ({ ticker: `${EVENT}-13NOV26${hour}`, open: start, close: start + 10*3600000 }));
@@ -108,4 +108,15 @@ test('post-close candle placeholders do not overwrite the last trading quote', (
   const last=historyModels(archive).at(-1).model.rows[0];
   assert.equal(last.bid,.01); assert.equal(last.quotedAt,start+60000); assert.equal(last.stale,true);
   assert.equal(last.result,''); assert.equal(last.fitted,undefined);
+});
+
+test('every archived fitted density is nonnegative and integrates back to its CDF', async () => {
+  const archive = JSON.parse(await readFile(new URL('../data/history.json',import.meta.url)));
+  for(const {model} of historyModels(archive)) {
+    if(model.error) continue;
+    const intervals=densityIntervals(model.points);
+    assert.ok(intervals.every(p=>p.perHour>=-1e-12));
+    const area=intervals.reduce((sum,p)=>sum+p.perHour*(p.end-p.start)/3600000,0);
+    assert.ok(Math.abs(area-(model.points.at(-1).p-model.points[0].p))<1e-12);
+  }
 });

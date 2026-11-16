@@ -58,6 +58,18 @@ export function quantile(points, probability, key = 'p') {
   return { time: points.at(-1)?.t ?? null, edge: 'after' };
 }
 
+/** Derivative of the piecewise-linear curve, in probability per hour.
+ * Preserve negative raw slopes. Do not normalize away unobserved tail mass. */
+export function densityIntervals(points) {
+  return points.slice(1).map((right, i) => {
+    const left = points[i];
+    const hours = (right.t-left.t)/3_600_000;
+    if (!(hours > 0)) throw new Error('Density requires strictly increasing deadlines');
+    const mass = right.p-left.p;
+    return { start: left.t, end: right.t, mass, perHour: mass/hours };
+  });
+}
+
 function quoteRow(market) {
   const noAsk = price(market, 'no_ask');
   const noBid = price(market, 'no_bid');

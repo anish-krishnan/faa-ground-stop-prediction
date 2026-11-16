@@ -23,7 +23,8 @@
   <p class="history-hint">Hover to explore · ← → keys</p>
   <div class="history-foot"><span id="historyBoundary">Pre-reopening forecasts only</span><a id="referenceLink" target="_blank" rel="noopener"></a></div>
 </section>
-<section class="chart-card" aria-labelledby="chartTitle"><div class="section-top"><h2 id="chartTitle">Market-implied CDF</h2><label class="check"><input id="band" type="checkbox" aria-controls="chart rawChart" checked> Bid / ask</label></div>
+<div class="distribution-grid">
+<section class="chart-card" aria-labelledby="chartTitle"><div class="section-top"><h2 id="chartTitle">Fitted CDF</h2><label class="check"><input id="band" type="checkbox" aria-controls="chart rawChart" checked> CDF bid / ask</label></div>
   <p class="chart-caption">Probability of an announcement before each deadline, fitted to never decrease.</p>
   <p id="cdfSnapshot" class="fine"></p>
   <div class="legend"><span><i class="orange"></i> Fitted</span><span><i class="dot"></i> Midpoint</span><span><i class="settled"></i> Settled</span><span><i class="tint"></i> Selected range</span></div>
@@ -31,8 +32,16 @@
   <p id="hover" class="chart-note"></p>
   <div class="chart-bottom"><span id="quality"></span></div>
 </section>
+<section class="chart-card" aria-labelledby="densityTitle">
+  <div class="section-top"><h2 id="densityTitle">Fitted density · PDF</h2><span class="fine">CDF slope</span></div>
+  <p class="chart-caption">Area over an interval is its probability. Taller sections concentrate more probability per hour.</p>
+  <p id="densitySnapshot" class="fine"></p>
+  <div class="legend"><span><i class="orange"></i> Implied density</span><span>Same time axis · shared density scale</span></div>
+  <div id="density" class="chart" tabindex="0" role="group" aria-describedby="densityHover" aria-label="Fitted probability density. Hover, tap, or use arrow keys to inspect an interval."></div>
+  <p id="densityHover" class="chart-note"></p><div id="densityQuality" class="chart-bottom"></div>
+</section>
 <section class="chart-card raw-card" aria-labelledby="rawTitle">
-  <div class="section-top"><h2 id="rawTitle">Raw market curve</h2><span class="fine">Before fitting</span></div>
+  <div class="section-top"><h2 id="rawTitle">Raw CDF inputs</h2><span class="fine">Before fitting</span></div>
   <p class="chart-caption">Unadjusted quote midpoints, with known settlements. Downward steps violate a valid CDF.</p>
   <p id="rawSnapshot" class="fine"></p>
   <div class="legend"><span><i class="raw"></i> Raw midpoint</span><span><i class="decrease"></i> Downward step</span><span><i class="whisker"></i> Bid / ask</span><span><i class="settled"></i> Settled</span></div>
@@ -40,6 +49,16 @@
   <p id="rawHover" class="chart-note"></p>
   <div class="chart-bottom"><span id="rawQuality"></span></div>
 </section>
+<section class="chart-card raw-card" aria-labelledby="rawDensityTitle">
+  <div class="section-top"><h2 id="rawDensityTitle">Raw density</h2><span class="fine">Before fitting</span></div>
+  <p class="chart-caption">Slope of the raw curve. Red regions are negative, so this is not always a valid PDF.</p>
+  <p id="rawDensitySnapshot" class="fine"></p>
+  <div class="legend"><span><i class="raw"></i> Raw slope</span><span><i class="decrease"></i> Invalid negative density</span></div>
+  <div id="rawDensity" class="chart" tabindex="0" role="group" aria-describedby="rawDensityHover" aria-label="Raw curve derivative. Hover, tap, or use arrow keys to inspect an interval."></div>
+  <p id="rawDensityHover" class="chart-note"></p><div id="rawDensityQuality" class="chart-bottom"></div>
+</section>
+</div>
+<p class="chart-caption">Density = change in CDF ÷ hours between deadlines. It is constant between points because we interpolate linearly. Tails outside the plotted range are not assigned a density.</p>
 <section class="contracts" aria-labelledby="marketTitle"><div class="section-top"><h2 id="marketTitle">Market data</h2><span id="volume" class="fine"></span></div><div class="table-scroll"><table><thead><tr><th>Announcement before</th><th>YES bid</th><th>YES ask</th><th>Midpoint</th><th>Fitted</th><th>Quote as of</th><th>Status</th></tr></thead><tbody id="rows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></section>
 <dialog id="mathDialog" aria-labelledby="mathTitle"><div class="dialog-top"><div><h2 id="mathTitle">How was this computed?</h2></div><button id="closeMath" class="close-button" aria-label="Close explanation">×</button></div>
 <div class="math-content">
@@ -47,7 +66,7 @@
 <section><span class="step">01</span><h3>Quote midpoints</h3><p>A YES contract pays $1 if the announcement happens before its deadline. We use the midpoint between the best YES bid and ask as a rough probability.</p><div class="formula">p<sub>i</sub> = (YES bid<sub>i</sub> + YES ask<sub>i</sub>) / 2</div><p class="math-example">For example: a 47¢ bid and 51¢ ask imply approximately 49%. Prices are market expectations, not calibrated odds.</p></section>
 <section><span class="step">02</span><h3>Monotonic fit</h3><p>“Before 3 a.m.” must be at least as likely as “before midnight.” If quotes disagree, a weighted isotonic regression finds the nearest nondecreasing curve. Narrower spreads receive more weight. Outcomes already settled at the observation time are fixed at 0% for NO and 100% for YES; the fit cannot move them.</p><div class="formula">min Σ w<sub>i</sub>(F<sub>i</sub> − p<sub>i</sub>)² &nbsp; with &nbsp; F<sub>i</sub> ≤ F<sub>i+1</sub><br><small>w<sub>i</sub> = 1 / max(ask<sub>i</sub> − bid<sub>i</sub>, 0.02)²</small></div></section>
 <section><span class="step">03</span><h3>Median</h3><p>The forecast ETA is the <strong>median</strong>: half the implied probability lies before it and half after. We interpolate linearly between neighboring quoted or settled deadlines that bracket the percentile. There is no synthetic 0% point at the observation time.</p><div class="formula">t<sub>50</sub> = t<sub>a</sub> + (0.50 − F<sub>a</sub>) / (F<sub>b</sub> − F<sub>a</sub>) × (t<sub>b</sub> − t<sub>a</sub>)</div><p id="mathExample" class="math-example">A live worked example will appear here once prices load.</p></section>
-<section><span class="step">04</span><h3>Probability range</h3><p>The default middle 50% runs from the 25th to the 75th percentile. Middle 80% uses the 10th and 90th; middle 90% uses the 5th and 95th. If the available points do not bracket a percentile, we show “before” the first supported deadline or “after” the last. These are bounds, not exact times.</p><p>The bid/ask band and median sensitivity use separate monotonic fits of bids and asks. They show quote uncertainty, <strong>not a statistical confidence interval</strong>.</p></section>
+<section><span class="step">04</span><h3>Probability range</h3><p>The default middle 50% runs from the 25th to the 75th percentile. Middle 80% uses the 10th and 90th; middle 90% uses the 5th and 95th. If the available points do not bracket a percentile, we show “before” the first supported deadline or “after” the last. These are bounds, not exact times.</p><p>The PDF is the slope of the linearly interpolated CDF: (F<sub>b</sub> − F<sub>a</sub>) / hours between deadlines. Its height is probability per hour; its area gives interval probability. For example, a 10-point increase over half an hour is 20% per hour. Density can exceed 100% per hour over a short interval. We do not normalize the displayed area to 100% or assign a shape to unobserved tails. Negative raw slopes are shown for comparison but cannot be valid probability densities.</p><p>The bid/ask band and median sensitivity use separate monotonic fits of bids and asks. They show quote uncertainty, <strong>not a statistical confidence interval</strong>.</p></section>
 <section><span class="step">05</span><h3>Mean and tail assumption</h3><p>The average can be later than the median because of a small chance of a very long delay. When the first supported point A has probability 0%, we integrate from A. Otherwise the mean is unavailable because the lower tail is unknown. For the upper tail, you choose the average additional wait after the final deadline L.</p><div class="formula">E[T] ≈ A + ∫<sub>A</sub><sup>L</sup> [1 − F(t)] dt + [1 − F(L)] × tail wait</div>
 <div class="mean-details"><label class="tail-control" for="tailHours">Average wait beyond final cutoff<select id="tailHours"><option value="6">6 hours</option><option value="12" selected>12 hours</option><option value="24">24 hours</option><option value="48">48 hours</option></select></label><div id="mean" class="mean">—</div><p id="meanDate" class="fine"></p><div class="small-line"><span id="tailDate">Beyond final deadline</span><strong id="tail">—</strong></div><div class="small-line"><span>Median at bid / ask</span><strong id="quoteRange">—</strong></div></div></section>
 <section><span class="step">06</span><h3>Historical reconstruction</h3><p>Every minute uses the same calculation: that minute’s closing YES bid and ask quotes, plus outcomes whose recorded settlement time is at or before the snapshot. Future outcomes never enter earlier estimates. Closed contracts remain in the table; their last quotes are labeled stale and excluded from the fit until a known settlement supplies an exact probability.</p><p>Hover to update the details, curve, and table. Missing quotes are not filled for estimation. Ranges are shaded only when both endpoints are bounded; triangles mark open-ended median bounds. These are reconstructions from minute-end candles, not saved live forecasts.</p><p>The green point marks <strong>8:15 p.m. Eastern on November 13</strong>, the reported airspace reopening. Kalshi’s final outcomes place the qualifying announcement from 8:00 p.m. to before 8:30 p.m.; they do not identify its exact minute. The FAA cancellation advisory is signed at 8:19 p.m.</p><p>The dashed line marks observations after reopening through 8:25 p.m. <strong>Only the line style changes; the math stays the same.</strong> Reopening time never enters the fitted distribution. Estimates within the half-hour deadline window depend on linear interpolation, and observations after reopening measure market reaction rather than advance predictive accuracy.</p><p><a href="https://rollcall.com/factbase/trump/transcript/donald-trump-press-briefing-markwayne-mullin-sean-duffy-faa-ground-stop-november-13-2026/" target="_blank" rel="noopener">Press briefing transcript ↗</a> · <a href="https://www.fly.faa.gov/ois/oisedit/adv_oisedit_dis?day=11142026&amp;number=5" target="_blank" rel="noopener">FAA advisory ↗</a> · <a href="https://docs.kalshi.com/api-reference/events/get-event-candlesticks" target="_blank" rel="noopener">Historical quotes ↗</a></p></section>

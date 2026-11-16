@@ -1,8 +1,11 @@
+import { densityIntervals } from './model.mjs';
 const $ = id => document.getElementById(id);
 const percent = probability => `${(100 * probability).toFixed(1)}%`;
 const escape = text => String(text).replace(/[&<>"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
 }[character]));
+const rawPoints = model => model.rows.filter(row => row.fitted != null)
+  .map(row => ({ t: row.t, p: row.result ? row.fitted : row.raw }));
 
 export function drawChart(model, low, high, formatDate, formatTime, raw = false) {
   const container = $(raw ? 'rawChart' : 'chart');
@@ -12,7 +15,7 @@ export function drawChart(model, low, high, formatDate, formatTime, raw = false)
   // Both panels use the same eligible inputs and axes. Only the quote values
   // change: unadjusted midpoints below, isotonic probabilities above.
   const rows = model.rows.filter(row => row.fitted != null);
-  const points = rows.map(row => ({ t: row.t, p: row.result ? row.fitted : row.raw }));
+  const points = rawPoints(model);
   const color = raw ? '#527b91' : '#df7136';
   const left = 48, right = 22, top = 15, bottom = 42;
   const single = model.points.length === 1;
@@ -94,5 +97,83 @@ export function drawChart(model, low, high, formatDate, formatTime, raw = false)
     if (!(event.key in keys)) return;
     event.preventDefault();
     inspect(Math.max(0, Math.min(rows.length-1, keys[event.key])));
+  };
+}
+
+export function drawDensity(model, formatDate, formatTime, raw = false) {
+  const container = $(raw ? 'rawDensity' : 'density');
+  const detail = $(raw ? 'rawDensityHover' : 'densityHover');
+  const quality = $(raw ? 'rawDensityQuality' : 'densityQuality');
+  const fitted = densityIntervals(model.points);
+  const original = densityIntervals(rawPoints(model));
+  const intervals = raw ? original : fitted;
+  container.onpointermove = container.onpointerdown = container.onkeydown = null;
+  detail.textContent = ''; quality.textContent = '';
+  if (!intervals.length) {
+    container.innerHTML = '<div class="empty">Two supported deadlines are needed for a density.</div>';
+    return;
+  }
+  const width = Math.max(280, container.clientWidth), height = Math.max(220, container.clientHeight);
+  const left = 48, right = 22, top = 24, bottom = 42;
+  const first = model.points[0].t, last = model.last;
+  const x = t => left+(t-first)/(last-first)*(width-left-right);
+  // Shared density scale, including raw negative slopes, for honest comparison.
+  const values = [...fitted, ...original].map(p => p.perHour);
+  const min = Math.min(0, ...values), max = Math.max(.01, ...values);
+  const target = (max-min)/4, magnitude = 10**Math.floor(Math.log10(target));
+  const step = [1,2,5,10].find(n => n*magnitude >= target)*magnitude;
+  const lower = Math.floor(min/step)*step, upper = Math.ceil(max/step)*step;
+  const y = value => top+(upper-value)/(upper-lower)*(height-top-bottom);
+  const color = raw ? '#527b91' : '#df7136';
+  const rate = n => `${(n*100).toFixed(1)}% / h`;
+  const svg = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${raw ? 'Raw CDF derivative; negative regions are invalid probability density' : 'Market-implied probability density per hour, derived from the fitted CDF'}">`,
+    `<text x="${left}" y="12" fill="#819088" font-size="9">DENSITY (% / HOUR)</text>`];
+  for (let i=0; i<=Math.round((upper-lower)/step); i++) {
+    const value = lower+i*step;
+    svg.push(`<line x1="${left}" x2="${width-right}" y1="${y(value)}" y2="${y(value)}" stroke="#e5eae5"/>`);
+    svg.push(`<text x="${left-9}" y="${y(value)+4}" text-anchor="end" fill="#819088" font-size="10">${Number((value*100).toFixed(2))}%</text>`);
+  }
+  for (const interval of intervals) {
+    const negative = interval.perHour < -1e-12;
+    const stroke = negative ? '#b85450' : color;
+    svg.push(`<rect x="${x(interval.start)}" y="${Math.min(y(0),y(interval.perHour))}" width="${x(interval.end)-x(interval.start)}" height="${Math.abs(y(interval.perHour)-y(0))}" fill="${stroke}" fill-opacity=".18"/>`);
+    svg.push(`<path d="M${x(interval.start)},${y(0)} V${y(interval.perHour)} H${x(interval.end)} V${y(0)}" stroke="${stroke}" stroke-width="1.5" fill="none"/>`);
+  }
+  svg.push(`<line x1="${left}" x2="${width-right}" y1="${y(0)}" y2="${y(0)}" stroke="#819088"/>`);
+  svg.push(`<rect data-interval-highlight visibility="hidden" y="${top}" height="${height-top-bottom}" fill="#243b33" fill-opacity=".06"/>`);
+  const ticks = width < 550 ? 3 : 5;
+  for (let i=0; i<ticks; i++) {
+    const t = first+(last-first)*i/(ticks-1);
+    const anchor = i===0 ? 'start' : i===ticks-1 ? 'end' : 'middle';
+    const day = formatTime(t,{month:'short',day:'numeric',hour:undefined,minute:undefined});
+    svg.push(`<text x="${x(t)}" y="${height-22}" text-anchor="${anchor}" fill="#819088" font-size="10"><tspan x="${x(t)}">${escape(formatTime(t))}</tspan><tspan x="${x(t)}" dy="13">${escape(day)}</tspan></text>`);
+  }
+  svg.push('</svg>'); container.innerHTML = svg.join('');
+  const mass = intervals.reduce((sum,p)=>sum+p.mass,0);
+  const negatives = intervals.filter(p=>p.perHour < -1e-12).length;
+  quality.textContent = raw ? `${negatives} negative ${negatives===1?'interval':'intervals'} · signed area ${percent(mass)}` : `Area shown ${percent(mass)} · ${percent(1-mass)} outside plotted range`;
+  detail.textContent = 'Hover or use ← → to inspect an interval.';
+  let selected = -1;
+  function inspect(index) {
+    selected = index;
+    const p = intervals[index];
+    const highlight = container.querySelector('[data-interval-highlight]');
+    highlight.setAttribute('visibility','visible'); highlight.setAttribute('x',x(p.start));
+    highlight.setAttribute('width',x(p.end)-x(p.start));
+    detail.textContent = `${formatDate(p.start)} – ${formatDate(p.end)} · ${rate(p.perHour)} · ${raw ? 'CDF change' : 'Probability'} ${raw ? `${(p.mass*100).toFixed(1)} pp` : percent(p.mass)}${p.perHour < -1e-12 ? ' · invalid negative density' : ''}`;
+  }
+  container.onpointermove = event => {
+    const rect = container.querySelector('svg').getBoundingClientRect();
+    const scale = Math.min(rect.width/width,rect.height/height);
+    const offset = (rect.width-width*scale)/2;
+    const time = first+((event.clientX-rect.left-offset)/scale-left)/(width-left-right)*(last-first);
+    const index = intervals.findIndex(p=>time<p.end);
+    inspect(index<0 ? intervals.length-1 : index);
+  };
+  container.onpointerdown = container.onpointermove;
+  container.onkeydown = event => {
+    const keys = {ArrowLeft:selected-1,ArrowRight:selected+1,Home:0,End:intervals.length-1};
+    if (!(event.key in keys)) return;
+    event.preventDefault(); inspect(Math.max(0,Math.min(intervals.length-1,keys[event.key])));
   };
 }

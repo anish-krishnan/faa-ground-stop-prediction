@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {price,deadline,isotonic,analyze,quantile} from '../src/model.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {price,deadline,isotonic,analyze,quantile,densityIntervals} from '../src/model.mjs';
 const now=Date.parse('2026-11-13T23:39:00Z');const market=(s,b,a,extra={})=>({ticker:'KXFAAGROUNDSTOPLIFT-13NOV26-'+s,yes_bid_dollars:String(b),yes_ask_dollars:String(a),status:'active',...extra});const data=markets=>({markets});
 test('cutoff uses immutable ticker, not early close time',()=>assert.equal(deadline(market('14NOV260000',.4,.6,{close_time:'2026-11-13T23:50:00Z'})),Date.parse('2026-11-14T05:00:00Z')));
 test('dollars, legacy cents, missing quotes',()=>{assert.equal(price({yes_bid_dollars:'0.4200'},'yes_bid'),.42);assert.equal(price({yes_bid:42},'yes_bid'),.42);assert.equal(price({yes_bid:null},'yes_bid'),null);});
@@ -44,4 +44,19 @@ test('an unknown lower tail cannot produce a finite mean',()=>{
 test('contradictory cumulative settlements fail instead of generating a curve',()=>{
   const a=analyze(data([market('13NOV262300',1,1,{result:'yes'}),market('14NOV260000',0,0,{result:'no'})]));
   assert.match(a.error,/Conflicting/); assert.deepEqual(a.points,[]);
+});
+
+test('density respects interval widths and integrates to the observed CDF increase',()=>{
+  const intervals=densityIntervals([{t:0,p:.1},{t:1800000,p:.3},{t:9000000,p:.7}]);
+  assert.ok(Math.abs(intervals[0].perHour-.4)<1e-12);
+  assert.ok(Math.abs(intervals[1].perHour-.2)<1e-12);
+  const area=intervals.reduce((sum,p)=>sum+p.perHour*(p.end-p.start)/3600000,0);
+  assert.ok(Math.abs(area-.6)<1e-12); // Unobserved 40% is not normalized away.
+});
+test('raw density preserves negative slopes rather than clipping them into a PDF',()=>{
+  const intervals=densityIntervals([{t:0,p:.8},{t:3600000,p:.3},{t:7200000,p:.9}]);
+  assert.equal(intervals[0].perHour,-.5);
+  assert.ok(Math.abs(intervals.reduce((s,p)=>s+p.mass,0)-.1)<1e-12);
+  assert.deepEqual(densityIntervals([{t:0,p:.8}]),[]);
+  assert.throws(()=>densityIntervals([{t:1,p:0},{t:1,p:1}]),/increasing deadlines/);
 });

@@ -1,5 +1,5 @@
 import { analyze, quantile } from './model.mjs';
-import { drawChart } from './chart.mjs';
+import { drawChart, drawDensity } from './chart.mjs';
 import { historyModels, snapshotAt } from './history.mjs';
 import { drawHistory } from './history-chart.mjs';
 
@@ -128,6 +128,12 @@ function renderUnavailable(model) {
   $('rawChart').onkeydown = null;
   $('rawHover').textContent = '';
   $('rawQuality').textContent = '';
+  for (const prefix of ['density', 'rawDensity']) {
+    $(prefix).innerHTML = '<div class="empty">No density available for this snapshot.</div>';
+    $(prefix).onpointermove = $(prefix).onpointerdown = $(prefix).onkeydown = null;
+    $(prefix+'Hover').textContent = '';
+    $(prefix+'Quality').textContent = '';
+  }
   $('quality').textContent = 'Forward curve unavailable';
   $('hover').textContent = '';
   $('mathExample').textContent = 'A forward worked example is unavailable for this snapshot.';
@@ -168,7 +174,7 @@ function render(redrawHistory = true) {
   $('notice').hidden = !notices.length;
   $('notice').textContent = notices.join(' ');
   renderRows(model);
-  for (const id of ['cdfSnapshot', 'rawSnapshot']) $(id).textContent = `As of ${date(Date.parse(state.snapshot.fetchedAt))}`;
+  for (const id of ['cdfSnapshot', 'rawSnapshot', 'densitySnapshot', 'rawDensitySnapshot']) $(id).textContent = `As of ${date(Date.parse(state.snapshot.fetchedAt))}`;
   if ((model.settled && !archive) || model.error) {
     renderUnavailable(model);
     renderArchiveHero();
@@ -193,6 +199,8 @@ function render(redrawHistory = true) {
   $('quality').textContent = `${model.quoteCount} quotes · ${model.settlementCount} settled · ${model.excluded} excluded · max fit adjustment ${(100 * model.adjustment).toFixed(1)} pp`;
   drawChart(model, low, high, date, format);
   drawChart(model, low, high, date, format, true);
+  drawDensity(model, date, format);
+  drawDensity(model, date, format, true);
   renderMathExample(model);
   renderArchiveHero();
   renderStatus();

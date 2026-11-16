@@ -106,3 +106,10 @@ The model can place the announcement before the quote observation. The precise m
 Independent arithmetic check at 8:14 p.m. EST: the 4:30 a.m. deadline had a 49% midpoint and the 5:00 a.m. deadline had a 54.5% midpoint. The 50% crossing is 4:35:27 a.m. EST, matching the reconstructed median. This supports the arithmetic, not the forecast’s accuracy.
 
 Individual-contract audit source: `https://external-api.kalshi.com/trade-api/v2/series/KXFAAGROUNDSTOPLIFT/markets/KXFAAGROUNDSTOPLIFT-13NOV26-13NOV262030/candlesticks?start_ts=1794618780&end_ts=1794619500&period_interval=1`.
+
+
+## CDF and density comparison
+
+The learning view uses a 2×2 grid: fitted and raw rows, CDF and density columns. On small screens these stack in reading order. All four panels follow the same selected historical minute and time axis; both density charts share a vertical scale, including any negative raw derivatives.
+
+Density is the derivative of the piecewise-linear CDF, constant on each deadline interval: `(F(right) - F(left)) / durationHours`. It is plotted in probability per hour, so interval area—not height alone—is probability. We preserve negative raw slopes and label them invalid; no raw derivative is presented as a valid PDF when it goes negative. Known settlements enter both rows as before. No smoothing or renormalization is introduced, and the unknown tails outside the supported deadlines have no invented density. Tests verify interval-width scaling, signed raw slopes, and integration back to every archived fitted CDF.
